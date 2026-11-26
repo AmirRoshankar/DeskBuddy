@@ -1,0 +1,26 @@
+# Local robot state, recordings, weights and recovery archives
+local/
+runs/
+configs/local.json
+*.pt
+*.pth
+*.onnx
+*.engine
+.env
+.env.*
+!.env.example
+
+# Python/build/development artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.impeccable/
+.DS_Store
+Thumbs.db

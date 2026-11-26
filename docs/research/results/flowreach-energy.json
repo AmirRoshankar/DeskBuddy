@@ -1,0 +1,48 @@
+{
+  "estimated": true,
+  "measured": false,
+  "motor_io": false,
+  "requested_cases": 100,
+  "matched_valid_cases": 79,
+  "voltage_v": 5.4,
+  "active_motors": 5,
+  "gripper_motor_off": true,
+  "summary": {
+    "numerical": {
+      "median_energy_j": 4.669665543336644,
+      "median_energy_wh": 0.0012971293175935122,
+      "median_mean_power_w": 1.0457689567847719,
+      "median_peak_power_w": 1.1988819190313258,
+      "median_duration_s": 4.117874577790717
+    },
+    "mlp": {
+      "median_energy_j": 4.669670723484689,
+      "median_energy_wh": 0.0012971307565235247,
+      "median_mean_power_w": 1.0457738418486788,
+      "median_peak_power_w": 1.1988822767106047,
+      "median_duration_s": 4.117865077740008
+    },
+    "imf": {
+      "median_energy_j": 4.669608445324346,
+      "median_energy_wh": 0.0012971134570345406,
+      "median_mean_power_w": 1.0457772158155478,
+      "median_peak_power_w": 1.1988499461140303,
+      "median_duration_s": 4.117895385099459
+    }
+  },
+  "assumptions": {
+    "voltage_v": 5.4,
+    "shaft_torque_constant_nm_a": 0.7649187,
+    "winding_resistance_ohm": 2.5,
+    "electronics_idle_a": 0.006,
+    "no_load_running_a": 0.15,
+    "no_load_speed_rad_s": 5.454153912482279,
+    "mechanical_efficiency": 0.6,
+    "payload_kg": 0.0
+  },
+  "limitations": "Not measured. Ignores inertial/Coriolis torques, servo PWM details, friction characterization, controller/camera/PC draw, payload by default, and post-reach holding. No regenerative credit. Vertical base gravity assumed.",
+  "source_urls": [
+    "https://docs.waveshare.com/ST3215_Servo",
+    "https://www.dfrobot.com/product-2961.html"
+  ]
+}

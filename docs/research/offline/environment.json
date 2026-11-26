@@ -1,0 +1,27 @@
+{
+  "python": "3.13.7",
+  "platform": "Windows",
+  "packages": {
+    "numpy": "2.2.6",
+    "scipy": "1.18.1",
+    "Pillow": "13.0.0",
+    "pyrealsense2": "2.59.2.11152",
+    "lerobot": "0.7.0",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128"
+  },
+  "cuda_available": true,
+  "torch_cuda_runtime": "12.8",
+  "gpu": "NVIDIA GeForce RTX 5070",
+  "vram_gib": 11.94,
+  "compute_capability": [
+    12,
+    0
+  ],
+  "gpu_training_smoke": {
+    "initial_mse": 0.2691691219806671,
+    "final_mse": 0.0013914601877331734,
+    "passed": true
+  },
+  "lerobot_import": true
+}

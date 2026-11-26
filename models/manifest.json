@@ -1,0 +1,63 @@
+{
+  "version": "0.1.0",
+  "url": "https://github.com/AmirRoshankar/DeskBuddy/releases/download/v0.1.0/deskbuddy-models-v0.1.0.zip",
+  "sha256": "23ba85a45c7643b6be3546aa25842f7a4dc852a37f8e9720db7e7a60e0ccb2f9",
+  "files": {
+    "runs/flowreach/trajectories-v1/models-v3/mlp.pt": "c80c8738f186ec06616850e000b0c8a5db8d3cecac57421b24e2c66c7b65af8f",
+    "runs/flowreach/trajectories-v1/models-v3/fm.pt": "8d43f99fdf6ceedf000978da9b1936efd8f53bab098d39dcc9848b1a11ad04a6",
+    "runs/flowreach/trajectories-v1/models-v3/imf.pt": "a162f06fd6765f9096a9472eacd4eec6618a564ba5b4c2da14bb3e2f8152b4b2",
+    "runs/flowreach/can-rim-grasps-v1/imf.pt": "8f8327310a37b2968570189d6b70dcaab90d01b39aac3602cfb950024ef0e857",
+    "runs/flowreach/can-rim-grasps-physics-v1/imf.pt": "290cd2b8da63af17f9bb927426b5f7de52c33c686471b6cf4451e622f242e319",
+    "runs/flowreach/can-grasps-v1/mlp.pt": "a5527b46b03f1c7f008552ea271d40d2056644047d8b23ad2deccea3c57534a2",
+    "runs/flowreach/can-grasps-v1/fm.pt": "39d37c74b63dc15526a4fa06ee55c15702f6cc55a188cee9b0b1bd4e61c46b64",
+    "runs/flowreach/can-grasps-v1/imf.pt": "2bb490c533bc637b055013224f494a8bf4d186df26934482be776cd28db505bb",
+    "runs/flowreach/can-grasps-v1/grasp_mf.pt": "a838eb5764ae40abf762d857ba3ad5706b1b0a6411ffe137498f62c4f18d03c5"
+  },
+  "metadata": {
+    "runs/flowreach/trajectories-v1/models-v3/mlp.pt": {
+      "task": "cartesian_trajectory_2d",
+      "method": "mlp"
+    },
+    "runs/flowreach/trajectories-v1/models-v3/fm.pt": {
+      "task": "cartesian_trajectory_2d",
+      "method": "fm"
+    },
+    "runs/flowreach/trajectories-v1/models-v3/imf.pt": {
+      "task": "cartesian_trajectory_2d",
+      "method": "imf"
+    },
+    "runs/flowreach/can-rim-grasps-v1/imf.pt": {
+      "task": "synthetic_can_grasp",
+      "method": "imf",
+      "profile": "can_rim"
+    },
+    "runs/flowreach/can-rim-grasps-physics-v1/imf.pt": {
+      "task": "synthetic_can_grasp",
+      "method": "imf",
+      "profile": "can_rim",
+      "physics_training": true
+    },
+    "runs/flowreach/can-grasps-v1/mlp.pt": {
+      "task": "synthetic_can_grasp",
+      "method": "mlp",
+      "profile": "can"
+    },
+    "runs/flowreach/can-grasps-v1/fm.pt": {
+      "task": "synthetic_can_grasp",
+      "method": "fm",
+      "profile": "can"
+    },
+    "runs/flowreach/can-grasps-v1/imf.pt": {
+      "task": "synthetic_can_grasp",
+      "method": "imf",
+      "profile": "can"
+    },
+    "runs/flowreach/can-grasps-v1/grasp_mf.pt": {
+      "task": "synthetic_can_grasp",
+      "method": "grasp_mf",
+      "profile": "can"
+    }
+  },
+  "includes_third_party_detector_weights": false,
+  "physical_grasp_success_measured": false
+}

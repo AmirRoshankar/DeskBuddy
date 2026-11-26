@@ -1,0 +1,24 @@
+{
+  "camera": "RealSense D435",
+  "motor_calibration_readback_matches": true,
+  "model_correction_training_points": 8,
+  "training_rmse_mm": 6.959666742803212,
+  "training_max_error_mm": 14.982636013854602,
+  "software_joint_zero_correction_deg": [
+    0.0,
+    -3.118758715160375,
+    -6.474809014490035,
+    -5.292285235055468,
+    0.0
+  ],
+  "fresh_validation_points": 2,
+  "fresh_validation_error_mm": [
+    3.2980277967073137,
+    5.629054416234649
+  ],
+  "refitted_on_validation": false,
+  "validation_threshold_mm": 12.0,
+  "table_plane_rmse_mm": 1.2735174841225758,
+  "table_plane_tilt_deg": 0.5504019601313226,
+  "limitations": "Point errors measure camera/model consistency. No independent absolute-position accuracy or physical reaching success has been measured."
+}

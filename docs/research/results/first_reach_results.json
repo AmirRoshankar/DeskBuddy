@@ -1,0 +1,26 @@
+{
+  "completed": true,
+  "target_m": [
+    0.3341099780584941,
+    0.07430965502793557,
+    0.07114398596485924
+  ],
+  "settled_model_tool_m": [
+    0.32215080355631504,
+    0.07471534183941547,
+    0.05351082308366366
+  ],
+  "settled_model_endpoint_error_mm": 21.309971134596864,
+  "max_tracking_error_deg": [
+    0.9694457603310618,
+    1.0834546247888275,
+    2.8353054629234418,
+    1.9759673887205154,
+    0.08791208791208781
+  ],
+  "duration_s": 14.476850799983367,
+  "max_command_speed_deg_s": 3.0,
+  "hold_retained": true,
+  "gripper_unchanged": true,
+  "note": "Tool position is estimated from encoder feedback and the calibrated model; external endpoint accuracy is not measured."
+}

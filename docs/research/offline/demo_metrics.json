@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "target_m": [
+    0.3204166666666667,
+    0.04875,
+    0.06
+  ],
+  "planning_ms": 11.53109990991652,
+  "endpoint_model_error_mm": 1.723631788967441e-05,
+  "duration_s": 2.0,
+  "samples": 61
+}

@@ -1,0 +1,78 @@
+{
+  "dataset_signature": "87b22bb8a1eaac91246d9f4b06642bb5eeab2e69e2cfa6040adedfd7cbd5ea37",
+  "split": "disjoint 4 cm target cells; bucket hash mod 8",
+  "synthetic_only": true,
+  "hardware_tested": false,
+  "imf_nfe": 1,
+  "noise_seed": 42,
+  "latency_device": "CPU; loaded/warmed models; excludes model loading",
+  "metrics": {
+    "numerical": {
+      "samples": 600,
+      "valid_joint_solution_rate": 1.0,
+      "success_at_2mm_rate": 1.0,
+      "median_model_gap_mm": 3.719996480293372e-05,
+      "p95_model_gap_mm": 9.406445159356781e-05,
+      "median_ms": 10.20840008277446,
+      "p95_ms": 26.935399998910714,
+      "path_checked": 100,
+      "valid_checked_paths": 79
+    },
+    "mlp_raw": {
+      "samples": 600,
+      "valid_joint_solution_rate": 0.9533333333333334,
+      "success_at_2mm_rate": 0.4216666666666667,
+      "median_model_gap_mm": 2.2167457401353565,
+      "p95_model_gap_mm": 5.3860303799004505,
+      "median_ms": 0.1144499983638525,
+      "p95_ms": 0.21773992339149115,
+      "path_checked": 0,
+      "valid_checked_paths": 0
+    },
+    "imf_raw": {
+      "samples": 600,
+      "valid_joint_solution_rate": 0.9616666666666667,
+      "success_at_2mm_rate": 0.44333333333333336,
+      "median_model_gap_mm": 2.1226936658603446,
+      "p95_model_gap_mm": 5.772886136006319,
+      "median_ms": 0.13105000834912062,
+      "p95_ms": 0.2178300288505852,
+      "path_checked": 0,
+      "valid_checked_paths": 0
+    },
+    "mlp_refined": {
+      "samples": 600,
+      "valid_joint_solution_rate": 1.0,
+      "success_at_2mm_rate": 1.0,
+      "median_model_gap_mm": 3.730469844754159e-05,
+      "p95_model_gap_mm": 9.411011972594612e-05,
+      "median_ms": 3.221699967980385,
+      "p95_ms": 7.625819917302572,
+      "path_checked": 0,
+      "valid_checked_paths": 0
+    },
+    "imf_refined": {
+      "samples": 600,
+      "valid_joint_solution_rate": 1.0,
+      "success_at_2mm_rate": 1.0,
+      "median_model_gap_mm": 3.727714290753271e-05,
+      "p95_model_gap_mm": 9.409918312667505e-05,
+      "median_ms": 3.4962998470291495,
+      "p95_ms": 7.493750005960463,
+      "path_checked": 100,
+      "valid_checked_paths": 80
+    }
+  },
+  "coarse_then_refine": {
+    "synthetic_only": true,
+    "hardware_tested": false,
+    "attempted": 100,
+    "both_stages_valid": 72,
+    "interpolation_speed_deg_s": 12.0,
+    "ideal_encoder_endpoint": true,
+    "excludes_settling_and_reacquisition_overhead": true,
+    "median_extra_trajectory_s": 1.9549436856243296,
+    "median_correction_trajectory_s": 2.0,
+    "max_corrected_model_gap_mm": 1.4356156373760494e-05
+  }
+}

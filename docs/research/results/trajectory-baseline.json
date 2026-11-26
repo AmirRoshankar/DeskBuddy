@@ -1,0 +1,32 @@
+{
+  "metrics": {
+    "scenarios": 5000,
+    "route_attempts": 10000,
+    "valid_trajectories": 10000,
+    "success_rate": 1.0,
+    "blocked_direct_fraction": 0.5268,
+    "median_generation_ms": 0.9203999070450664,
+    "median_validation_ms": 0.3610001876950264,
+    "median_total_ms": 1.2056998675689101,
+    "median_length_m": 0.17060639709234238,
+    "median_inflated_clearance_m": 0.006481527032200831,
+    "elapsed_s": 24.284382699988782
+  },
+  "split_counts": {
+    "test": 1000,
+    "validation": 1000,
+    "train": 8000
+  },
+  "attempt_status_counts": {
+    "success": 10000
+  },
+  "split_method": "25 start/goal cases per identical obstacle layout family; entire families and all route seeds stay in one split",
+  "limitations": [
+    "2D circular tool proxy; not an SO-101 joint or link collision test.",
+    "No perception, IK, motor timing or learned trajectory model is included.",
+    "Timing is CPU Python and includes shortcutting/resampling/validation, not scene creation, metric computation or file writes.",
+    "Second difference is geometric, not physical acceleration or jerk; no time parameterization.",
+    "Repeated seeds permit but do not guarantee different route modes. Failed attempts are retained."
+  ],
+  "figure_selection": "Six cases with largest seed-to-seed deviation, with distinct layout families; illustrative extremes, not representative average quality"
+}

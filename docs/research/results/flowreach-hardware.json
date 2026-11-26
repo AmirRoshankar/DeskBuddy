@@ -1,0 +1,347 @@
+{
+  "date": "2026-11-25",
+  "protocol": "1 cm vertical reaches, iMF up, MLP return, MLP up, attempted iMF return; each accepted proposal refined with numerical IK before motion",
+  "trials": [
+    {
+      "model": "imf",
+      "target_m": [
+        0.2585131878,
+        -0.0024107749,
+        0.1328969121
+      ],
+      "start_model_rad": [
+        0.02301533079552962,
+        -1.3225773349884986,
+        1.5878262100489786,
+        -0.2787919817501899,
+        0.052935260829718125
+      ],
+      "planning_ms": 18.836200004443526,
+      "planner_info": [
+        {
+          "requested": "flow_assisted",
+          "used": "flow_assisted",
+          "proposal_method": "imf",
+          "proposal_ms": 0.465999823063612,
+          "raw_model_gap_mm": 2.9397838294216068,
+          "refinement_ms": 6.534700049087405
+        }
+      ],
+      "preview_duration_s": 2.0,
+      "executed": true,
+      "independent_visual_accuracy_measured": false,
+      "job_directory": "runs\\control\\jobs\\1f1ba227-ba62-4f03-83eb-fa8403c936b0",
+      "worker_pid": 60976,
+      "exit_code": 0,
+      "completed": true,
+      "model_gap_mm": 1.861581650975901,
+      "duration_s": 6.008842800045386,
+      "max_tracking_error_deg": [
+        6.952757448999081e-06,
+        0.8381201624086204,
+        0.4196060302527681,
+        0.6175870579006656,
+        3.975693351829396e-16
+      ],
+      "control_timing": {
+        "read_ms": {
+          "median": 1.500000013038516,
+          "p99": 1.7585100000724196,
+          "max": 1.8543999176472425
+        },
+        "write_ms": {
+          "median": 0.2570000942796469,
+          "p99": 0.5238080304116011,
+          "max": 1.420699991285801
+        },
+        "service_ms": {
+          "median": 2.105599967762828,
+          "p99": 3.788581858389079,
+          "max": 4.469399806112051
+        },
+        "start_lateness_ms": {
+          "median": 0.28480286709964275,
+          "p99": 0.6393130170181391,
+          "max": 3.5512023605406284
+        },
+        "planned_period_ms": 4.0,
+        "requested_hz": 250.0,
+        "read_failures": 0,
+        "write_failures": 0,
+        "goal_read_failures": 0,
+        "goal_mismatches": 0,
+        "deadline_misses": 13,
+        "iterations": 1499,
+        "adaptive_correction": true,
+        "state_filter": "constant_velocity_kalman",
+        "settling_converged": false,
+        "final_joint_error_deg": [
+          6.952757448999081e-06,
+          -0.03142983555541606,
+          0.33169394234068944,
+          0.09011453042813632,
+          0.0
+        ],
+        "final_estimation_std_deg": [
+          0.019149581149601077,
+          0.019149581149601077,
+          0.019149581149601077,
+          0.019149581149601077,
+          0.019149581149601077
+        ],
+        "max_sent_speed_deg_s": 3.1105090064972747,
+        "achieved_hz": 249.5028294158845,
+        "successful_command_hz": 249.50279619260093
+      },
+      "executed_planner_info": [
+        {
+          "requested": "flow_assisted",
+          "used": "flow_assisted",
+          "proposal_method": "imf",
+          "proposal_ms": 6.287200143560767,
+          "raw_model_gap_mm": 2.9397838294216068,
+          "refinement_ms": 9.137700079008937
+        }
+      ],
+      "trial": "imf-up",
+      "planned_motion_power_estimate": {
+        "energy_j": 2.199545730023615,
+        "mean_power_w": 1.0997728650118075,
+        "peak_power_w": 1.1083172202022387,
+        "duration_s": 2.0
+      }
+    },
+    {
+      "model": "mlp",
+      "target_m": [
+        0.2585131878,
+        -0.0024107749,
+        0.1228969121
+      ],
+      "start_model_rad": [
+        0.02301533079552962,
+        -1.359401864261346,
+        1.5878262100489786,
+        -0.28799811406840176,
+        0.052935260829718125
+      ],
+      "planning_ms": 16.358300112187862,
+      "planner_info": [
+        {
+          "requested": "flow_assisted",
+          "used": "flow_assisted",
+          "proposal_method": "mlp",
+          "proposal_ms": 0.34520006738603115,
+          "raw_model_gap_mm": 0.6370338132890551,
+          "refinement_ms": 4.068899899721146
+        }
+      ],
+      "preview_duration_s": 2.0,
+      "executed": true,
+      "independent_visual_accuracy_measured": false,
+      "job_directory": "runs\\control\\jobs\\74b0d916-05af-49e2-94a1-128a9547b235",
+      "worker_pid": 35388,
+      "exit_code": 0,
+      "completed": true,
+      "model_gap_mm": 1.1934418814219312,
+      "duration_s": 6.01581949996762,
+      "max_tracking_error_deg": [
+        2.2218751693237988e-08,
+        1.010351583317878,
+        0.2013120774765918,
+        0.4645009404408235,
+        3.975693351829396e-16
+      ],
+      "control_timing": {
+        "read_ms": {
+          "median": 1.4929999597370625,
+          "p99": 1.7407558718696237,
+          "max": 2.0852000452578068
+        },
+        "write_ms": {
+          "median": 0.29419991187751293,
+          "p99": 0.5205021193251014,
+          "max": 0.5542000290006399
+        },
+        "service_ms": {
+          "median": 2.2878998424857855,
+          "p99": 3.906536055728793,
+          "max": 5.03340014256537
+        },
+        "start_lateness_ms": {
+          "median": 0.2689014654606581,
+          "p99": 0.6960625434294342,
+          "max": 3.43170203268528
+        },
+        "planned_period_ms": 4.0,
+        "requested_hz": 250.0,
+        "read_failures": 0,
+        "write_failures": 0,
+        "goal_read_failures": 0,
+        "goal_mismatches": 0,
+        "deadline_misses": 26,
+        "iterations": 1499,
+        "adaptive_correction": true,
+        "state_filter": "constant_velocity_kalman",
+        "settling_converged": false,
+        "final_joint_error_deg": [
+          -2.2218751693237988e-08,
+          -0.10188140737589003,
+          -0.2013120774765918,
+          0.06297158703170577,
+          0.0
+        ],
+        "final_estimation_std_deg": [
+          0.01913020258210966,
+          0.01913020258210966,
+          0.01913020258210966,
+          0.01913020258210966,
+          0.01913020258210966
+        ],
+        "max_sent_speed_deg_s": 3.3038171239595253,
+        "achieved_hz": 249.2324546585875,
+        "successful_command_hz": 249.23240493161455
+      },
+      "executed_planner_info": [
+        {
+          "requested": "flow_assisted",
+          "used": "flow_assisted",
+          "proposal_method": "mlp",
+          "proposal_ms": 5.128599936142564,
+          "raw_model_gap_mm": 0.6370338132890551,
+          "refinement_ms": 4.197800066322088
+        }
+      ],
+      "trial": "mlp-return",
+      "planned_motion_power_estimate": {
+        "energy_j": 2.186262771914186,
+        "mean_power_w": 1.093131385957093,
+        "peak_power_w": 1.096576709503632,
+        "duration_s": 2.0
+      }
+    },
+    {
+      "model": "mlp",
+      "target_m": [
+        0.2585131878,
+        -0.0024107749,
+        0.1328969121
+      ],
+      "start_model_rad": [
+        0.02301533079552962,
+        -1.325646045761236,
+        1.5847574992762412,
+        -0.2787919817501899,
+        0.052935260829718125
+      ],
+      "planning_ms": 16.70369994826615,
+      "planner_info": [
+        {
+          "requested": "flow_assisted",
+          "used": "flow_assisted",
+          "proposal_method": "mlp",
+          "proposal_ms": 0.38109999150037766,
+          "raw_model_gap_mm": 0.759724308461075,
+          "refinement_ms": 4.6993999276310205
+        }
+      ],
+      "preview_duration_s": 2.0,
+      "executed": true,
+      "independent_visual_accuracy_measured": false,
+      "job_directory": "runs\\control\\jobs\\e94c7ff4-652c-4b12-ab97-a32903160dad",
+      "worker_pid": 60176,
+      "exit_code": 0,
+      "completed": true,
+      "model_gap_mm": 0.954774058247664,
+      "duration_s": 3.0611833001021296,
+      "max_tracking_error_deg": [
+        6.951862947216265e-06,
+        1.2426890178977021,
+        0.19378883628231763,
+        0.5222212015024863,
+        3.975693351829396e-16
+      ],
+      "control_timing": {
+        "read_ms": {
+          "median": 1.512999995611608,
+          "p99": 1.7631220677867532,
+          "max": 1.850700005888939
+        },
+        "write_ms": {
+          "median": 0.174800050444901,
+          "p99": 0.5091111082583666,
+          "max": 0.5648999940603971
+        },
+        "service_ms": {
+          "median": 2.076250035315752,
+          "p99": 3.8586440752260387,
+          "max": 3.9190000388771296
+        },
+        "start_lateness_ms": {
+          "median": 0.19930058624595404,
+          "p99": 0.6545365904457867,
+          "max": 4.231000551953912
+        },
+        "planned_period_ms": 4.0,
+        "requested_hz": 250.0,
+        "read_failures": 0,
+        "write_failures": 0,
+        "goal_read_failures": 0,
+        "goal_mismatches": 0,
+        "deadline_misses": 5,
+        "iterations": 764,
+        "adaptive_correction": true,
+        "state_filter": "constant_velocity_kalman",
+        "settling_converged": true,
+        "final_joint_error_deg": [
+          6.951862947216265e-06,
+          -0.009235659974373355,
+          0.19378883628231763,
+          -0.005251325970042921,
+          0.0
+        ],
+        "final_estimation_std_deg": [
+          0.019156904868143997,
+          0.019156904868143997,
+          0.019156904868143997,
+          0.019156904868143997,
+          0.019156904868143997
+        ],
+        "max_sent_speed_deg_s": 3.2661221485830567,
+        "achieved_hz": 249.622079029209,
+        "successful_command_hz": 249.62203009336247
+      },
+      "executed_planner_info": [
+        {
+          "requested": "flow_assisted",
+          "used": "flow_assisted",
+          "proposal_method": "mlp",
+          "proposal_ms": 5.042199976742268,
+          "raw_model_gap_mm": 0.759724308461075,
+          "refinement_ms": 4.5918000396341085
+        }
+      ],
+      "trial": "mlp-up",
+      "planned_motion_power_estimate": {
+        "energy_j": 2.197859862010217,
+        "mean_power_w": 1.0989299310051086,
+        "peak_power_w": 1.1058745735745579,
+        "duration_s": 2.0
+      }
+    }
+  ],
+  "rejected_trials": [
+    {
+      "trial": "imf-return",
+      "executed": false,
+      "reason": "Learned proposal outside calibrated joint ranges; numerical fallback excluded from comparison"
+    }
+  ],
+  "limitations": [
+    "Endpoint gaps are FK estimates from joint feedback, not independent physical tip measurements.",
+    "Only three executed reaches; starts differ slightly, and the planned counterbalanced comparison was incomplete. No general model ranking is justified.",
+    "The UI green marker remained the previous clicked target, not the external comparison target.",
+    "Power is a quasi-static scenario for the 2-second planned path only, excluding settling and subsequent holding; electrical current was not measured. See flowreach-analysis.md for assumptions.",
+    "First iMF and MLP-return reached model tolerance but timed out on the stricter joint settling criterion; MLP-up met both."
+  ]
+}

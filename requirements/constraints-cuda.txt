@@ -1,0 +1,10 @@
+# Tested Windows / RTX 5070 pairing. Install from the cu128 index first.
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+lerobot==0.7.0
+numpy==2.2.6
+scipy==1.18.1
+Pillow==13.0.0
+pyrealsense2==2.59.2.11152
+opencv-python==4.13.0.92
+ultralytics==8.4.219

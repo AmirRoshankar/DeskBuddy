@@ -1,0 +1,20 @@
+{
+  "synthetic_only": true,
+  "samples": 200,
+  "same_current_robot_geometry": true,
+  "actual_goal_never_remapped_for_refinement": true,
+  "comparison": {
+    "direct": {
+      "median_seed_gap_mm": 2.168956810993715,
+      "refinement_success_rate": 0.995,
+      "median_proposal_refinement_ms": 4.611650016158819
+    },
+    "workspace_affine": {
+      "median_seed_gap_mm": 73.28477896194224,
+      "refinement_success_rate": 0.995,
+      "median_proposal_refinement_ms": 15.27874986641109
+    }
+  },
+  "affine_smaller_seed_gap_count": 0,
+  "limitations": "IK warm starts only, not full trajectory or hardware validation; samples are local joint perturbations of held-out training starts, filtered to current workspace; latency single pass, not a warmed benchmark"
+}
