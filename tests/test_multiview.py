@@ -18,6 +18,7 @@ from deskbuddy.trajectory.perception import DetectedBox
 def synthetic_pair():
     c = deepcopy(DEFAULT)
     c["T_base_camera"] = T_BASE_CAMERA.tolist()
+    c["calibration_verified"] = True
     base = np.array(
         [[0.15, -0.1, 0], [0.36, -0.1, 0], [0.36, 0.197, 0], [0.15, 0.197, 0]]
     )
@@ -76,6 +77,21 @@ def test_frontal_paper_does_not_invent_an_observable_focal_length():
         )
         is None
     )
+
+
+def test_camera_pair_can_align_without_robot_calibration():
+    import cv2
+
+    c, intr, _, pp, sp, images = synthetic_pair()
+    c.update(T_base_camera=None, calibration_verified=False, test_bed=None)
+    result = calibrate_views(*images, pp, sp, intr, c, None)
+    assert result["camera_only"] and result["frame"] == "paper"
+    assert not result["metric_3d_validated"]
+    assert "T_base_camera" not in result and "primary_bed" not in result
+    mapped = cv2.perspectiveTransform(
+        np.float32(pp)[None], np.asarray(result["H_primary_to_secondary"])
+    )[0]
+    np.testing.assert_allclose(mapped, sp, atol=0.01)
 
 
 def test_planar_confirmation_uses_contact_edge_not_raised_object_center():

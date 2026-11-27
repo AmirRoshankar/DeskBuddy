@@ -7,6 +7,59 @@ import numpy as np
 from .test_bed import corners, table_height_at
 
 
+def level_camera_pose(pixels, intrinsics, transform, table_z):
+    """RealSense extrinsics whose tilt and height agree with the A4 on a level table.
+
+    The hand-guided camera calibration fixes where the camera is relative to
+    the robot, but a few degrees of tilt error put the A4 corners 10+ px off
+    and move elevated points (a can lid) by centimetres. Four A4 corners on
+    the known level table determine the camera's tilt and height exactly; the
+    in-plane placement (x, y, heading) is kept from the existing calibration
+    so robot registration on the table is unchanged.
+    Returns (refined 4x4, free-PnP residual px per corner).
+    """
+    import cv2
+
+    pixels = np.asarray(pixels, float)
+
+    def value(key):
+        return (
+            intrinsics[key]
+            if isinstance(intrinsics, dict)
+            else getattr(intrinsics, key)
+        )
+
+    k = np.array(
+        [[value("fx"), 0, value("ppx")], [0, value("fy"), value("ppy")], [0, 0, 1.0]]
+    )
+    obj = np.array([[0.0, 0, 0], [0.210, 0, 0], [0.210, 0.297, 0], [0, 0.297, 0]])
+    ok, rotation, translation = cv2.solvePnP(
+        obj, pixels, k, None, flags=cv2.SOLVEPNP_IPPE
+    )
+    if not ok:
+        raise ValueError("Paper pose could not be fitted")
+    rotation, translation = cv2.solvePnPRefineLM(
+        obj, pixels, k, None, rotation, translation
+    )
+    residual = np.linalg.norm(
+        cv2.projectPoints(obj, rotation, translation, k, None)[0].reshape(-1, 2)
+        - pixels,
+        axis=1,
+    )
+    camera_paper = np.eye(4)
+    camera_paper[:3, :3] = cv2.Rodrigues(rotation)[0]
+    camera_paper[:3, 3] = translation.ravel()
+    transform = np.asarray(transform, float)
+    # Where the current calibration places the sheet, flattened onto the table.
+    paper = transform @ camera_paper
+    heading = np.arctan2(paper[1, 0], paper[0, 0])
+    level = np.eye(4)
+    c, s = np.cos(heading), np.sin(heading)
+    level[:3, :3] = [[c, -s, 0], [s, c, 0], [0, 0, 1]]
+    level[:3, 3] = [paper[0, 3], paper[1, 3], float(table_z)]
+    return level @ np.linalg.inv(camera_paper), residual
+
+
 def fit_paper(pixels, intrinsics, transform, depth=None, *, strict=True, table_z=None):
     import cv2
 

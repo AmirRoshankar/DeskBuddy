@@ -93,8 +93,26 @@ def validate_plan(arm, plan, config):
         or (np.diff(times) <= 0).any()
     ):
         raise ValueError("Plan contains nonfinite values or invalid timestamps")
-    if (q < arm.lower).any() or (q > arm.upper).any():
-        raise ValueError("Joint limit violated")
+    excess = np.maximum(np.maximum(arm.lower - q, q - arm.upper), 0.0)
+    tolerance = 1e-8  # radians: numerical precision, not additional travel
+    if excess.max() > tolerance:
+        growth = np.diff(excess, axis=0)
+        if excess[0].max() > np.deg2rad(2.0) + tolerance or (growth > tolerance).any():
+            from .kinematics import JOINTS
+
+            if excess[0].max() > np.deg2rad(2.0) + tolerance:
+                row, joint = 0, int(np.argmax(excess[0]))
+                reason = "measured start exceeds recovery allowance of 2 degrees"
+            else:
+                step, joint = np.unravel_index(np.argmax(growth), growth.shape)
+                row = step + 1
+                reason = "path moves farther outside limit"
+            raise ValueError(
+                f"Joint limit violated: {JOINTS[joint]} at step {row}, "
+                f"{np.rad2deg(q[row, joint]):.3f} deg "
+                f"(allowed {np.rad2deg(arm.lower[joint]):.3f} to {np.rad2deg(arm.upper[joint]):.3f}); "
+                f"excess {np.rad2deg(excess[row, joint]):.4f} deg; {reason}"
+            )
     velocities = np.abs(np.diff(q, axis=0) / np.diff(times)[:, None])
     if velocities.max() > np.deg2rad(config["max_joint_speed_deg_s"]) * 1.001:
         raise ValueError("Joint velocity limit violated")
@@ -154,6 +172,9 @@ def validate_plan(arm, plan, config):
 def plan_reach(arm, start, target, config):
     check_workspace(target, config)
     start = np.asarray(start, float)
+    from .reachability import check_reach
+
+    check_reach(arm, target, start[4], config)
     if (start < arm.lower).any() or (start > arm.upper).any():
         raise ValueError(arm.limit_error(start))
     if config.get("validated_wrist_roll_deg") is not None:

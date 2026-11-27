@@ -28,6 +28,7 @@ class CalibrationFlow:
     def begin(self):
         self.stage = "release"
         self.pixels, self.paper = [], None
+        self.webcam_fit, self.web_pixels, self.secondary = None, [], None
         self.bar.step(
             "1 / 4 · Clamp the base and support the arm so it cannot fall. Release hold to reposition it by hand. No reach will run.",
             "Arm supported — release hold",
@@ -36,9 +37,64 @@ class CalibrationFlow:
 
     def capture_step(self):
         self.stage = "capture"
-        count = len(self.state["tool_points"])
+        count = len(self.state.get("webcam_points", []))
         self.bar.step(
-            f"2 / 4 · Arm points {count}/8. With torque off, close the jaws. Hand-guide to varied positions and heights, hold still 1 s, then click the same jaw-tip meeting point."
+            f"2 / 4 · Paired RGB arm points {count}/8. Close the jaws; hand-guide to distinct positions across the workspace at several heights. Hold still 1 s, then click the jaw-tip meeting point in both pop-out views. The last two points check the fit."
+        )
+
+    def webcam_assessment(self, fit):
+        checks = ", ".join(f"{v:.1f}" for v in fit["heldout_error_px"])
+        message = (
+            f"Camera/model disagreement: RMS {fit['fit_rmse_px']:.1f} px; check points {checks} px. "
+            "This measures the camera + arm model fit, not whether your clicks were correct. "
+        )
+        if not fit.get("coverage_ok", True):
+            message += "Check poses extend beyond the fitting volume. "
+        if not fit["passed"]:
+            message += "Usable as an estimate; accuracy remains unverified."
+        self.bar.step(
+            "2 / 4 - " + message,
+            "Use webcam fit" if fit["passed"] else "Use estimated fit",
+            lambda: self.use_webcam_fit(fit),
+        )
+
+    def use_webcam_fit(self, fit):
+        from copy import deepcopy
+
+        self.webcam_fit = deepcopy(fit)
+        self.webcam_fit["operator_accepted_estimate"] = not bool(fit["passed"])
+        self.begin_paper_webcam()
+
+    def begin_paper_webcam(self):
+        self.stage, self.web_pixels, self.pixels, self.paper = (
+            "paper_webcam",
+            [],
+            [],
+            None,
+        )
+        self.bar.step(
+            "3 / 4 · In the WEBCAM view click an A4 corner, then its neighbour along the SHORT (210 mm) edge, then the other two around the sheet. 0/4.",
+            "Restart corners",
+            self.begin_paper_webcam,
+        )
+
+    def capture_paper_webcam(self, pixel):
+        if len(self.web_pixels) >= 4:
+            return
+        self.web_pixels.append([float(v) for v in pixel])
+        if len(self.web_pixels) < 4:
+            self.bar.step(
+                f"Webcam paper corners {len(self.web_pixels)}/4 · continue around the sheet.",
+                "Restart corners",
+                self.begin_paper_webcam,
+            )
+            return
+        self.stage = "paper"
+        self.pixels = []
+        self.bar.step(
+            "3 / 4 · Now click the SAME four corners in the SAME order in the RealSense view (registers it from the paper; no depth). 0/4.",
+            "Restart corners",
+            self.begin_paper_webcam,
         )
 
     def support_action(self, action):
@@ -77,8 +133,10 @@ class CalibrationFlow:
                 raise ValueError(lines[-1] if lines else "Motor operation failed")
             if action == "release":
                 self.capture_step()
+                if getattr(self, "on_manual_capture", None):
+                    self.on_manual_capture()
                 self.status.set(
-                    "All six motors report torque off. Capture tool poses in the color view."
+                    "All six motors report torque off. Select the jaw tip in both pop-out RGB views for each of 8 poses."
                 )
             else:
                 self.stage = "clear"
@@ -139,6 +197,30 @@ class CalibrationFlow:
             return
         try:
             _, depth, intrinsics = self.state["frame"]
+            if getattr(self, "webcam_fit", None) is not None:
+                from .rgb_hand_eye import register_from_paper
+
+                size = self.webcam_fit.get("image_size") or [
+                    self.state["secondary_frame"][0].shape[1],
+                    self.state["secondary_frame"][0].shape[0],
+                ]
+                realsense, _, self.secondary = register_from_paper(
+                    self.webcam_fit,
+                    self.web_pixels,
+                    self.pixels,
+                    intrinsics
+                    if isinstance(intrinsics, dict)
+                    else dict(
+                        fx=intrinsics.fx,
+                        fy=intrinsics.fy,
+                        ppx=intrinsics.ppx,
+                        ppy=intrinsics.ppy,
+                    ),
+                    size,
+                    self.config["table_z_m"],
+                )
+                self.config["T_base_camera"] = realsense.tolist()
+                depth = None  # RGB only: the depth sensor is not used.
             self.paper = fit_paper(
                 self.pixels,
                 intrinsics,
@@ -162,6 +244,26 @@ class CalibrationFlow:
     def use_paper(self):
         try:
             self.config.update(apply_paper(self.config, self.paper))
+            # Motion bounds default to the arm's full reach, not the sheet.
+            from .kinematics import Arm
+            from .reachability import full_reach_bounds
+
+            low, high = full_reach_bounds(
+                Arm(
+                    self.config.get("model_joint_limits_deg"),
+                    self.config.get("tool_offset_m"),
+                ),
+                self.config,
+            )
+            self.config.update(workspace_min_m=low, workspace_max_m=high)
+            if getattr(self, "secondary", None) is not None:
+                import time as clock
+
+                from .multiview import primary_signature
+
+                secondary = dict(self.secondary, calibrated_unix_s=clock.time())
+                secondary["primary_signature"] = primary_signature(self.config)
+                self.config["secondary_camera_calibration"] = secondary
             self.save()
             self.stage = "hold"
             self.bar.step(

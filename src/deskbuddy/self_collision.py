@@ -13,8 +13,8 @@ from pathlib import Path
 import numpy as np
 from scipy.optimize import linprog
 from scipy.spatial import ConvexHull
-from scipy.spatial.transform import Rotation
 
+from .kinematics import axis_rotation
 from .table_collision import origin_transform
 
 
@@ -53,7 +53,20 @@ def model():
     return parts, children, allowed, origin_transform(jaw.find("origin"))
 
 
-def world_parts(arm, q):
+class LazyPart(dict):
+    """World collision part; face planes are transformed only when a face test needs them."""
+
+    def __missing__(self, key):
+        if key not in ("normals", "offsets"):
+            raise KeyError(key)
+        t, equations = self["_transform"], self["_equations"]
+        normals = equations[:, :3] @ t[:3, :3].T
+        self["normals"] = normals
+        self["offsets"] = equations[:, 3] - normals @ t[:3, 3]
+        return self[key]
+
+
+def world_parts(arm, q, jaw_deg=0.0):
     parts, children, allowed, jaw_origin = model()
     transforms = {"base_link": np.eye(4)}
     t = np.eye(4)
@@ -62,31 +75,95 @@ def world_parts(arm, q):
         t = t @ origin
         if bounds is not None:
             motion = np.eye(4)
-            motion[:3, :3] = Rotation.from_rotvec(axis * q[index]).as_matrix()
+            motion[:3, :3] = axis_rotation(axis, q[index])
             t = t @ motion
             index += 1
         transforms[children[name]] = t.copy()
         if name == "wrist_roll":
             # Nominal closed jaw, including Home's requested closed end pose.
-            transforms["moving_jaw_so101_v1_link"] = t @ jaw_origin
+            opening = np.eye(4)
+            # Nominal 0-100 % opening ~ 0-100 URDF degrees about the jaw axis
+            # (same mapping as can_discard.jaw_geometry).
+            opening[:3, :3] = axis_rotation(
+                np.array([0.0, 0.0, 1.0]), np.deg2rad(jaw_deg)
+            )
+            transforms["moving_jaw_so101_v1_link"] = t @ jaw_origin @ opening
     result = []
     for name, t in transforms.items():
         for index, (vertices, equations) in enumerate(parts.get(name, [])):
             world = vertices @ t[:3, :3].T + t[:3, 3]
-            normals = equations[:, :3] @ t[:3, :3].T
-            offsets = equations[:, 3] - normals @ t[:3, 3]
             result.append(
-                dict(
+                LazyPart(
                     name=name,
                     part=index,
                     vertices=world,
                     low=world.min(0),
                     high=world.max(0),
-                    normals=normals,
-                    offsets=offsets,
+                    _equations=equations,
+                    _transform=t,
                 )
             )
     return result, allowed
+
+
+def _closest_simplex(simplex):
+    """Point of the simplex nearest the origin, and the sub-simplex supporting it."""
+    points = np.asarray(simplex)
+    count = len(points)
+    best = None
+    # Enumerate faces of the (at most 4-point) simplex: exact, tiny and robust.
+    for size in range(1, count + 1):
+        for subset in itertools.combinations(range(count), size):
+            p = points[list(subset)]
+            if size == 1:
+                weights = np.ones(1)
+            else:
+                edges = (p[1:] - p[0]).T
+                gram = edges.T @ edges
+                try:
+                    coefficients = np.linalg.solve(gram, -edges.T @ p[0])
+                except np.linalg.LinAlgError:
+                    continue
+                weights = np.r_[1 - coefficients.sum(), coefficients]
+                if (weights < -1e-12).any():
+                    continue
+            closest = weights @ p
+            distance = float(closest @ closest)
+            if best is None or distance < best[0] - 1e-18:
+                best = (distance, closest, list(subset))
+    return best[1], [simplex[i] for i in best[2]]
+
+
+def separated(a, b, iterations=48):
+    """Exact separation certificate (GJK search); False means "not proven".
+
+    A returned True is only issued after checking a plane that strictly
+    separates both vertex sets, so search errors can only cost time.
+    """
+    va, vb = a["vertices"], b["vertices"]
+    direction = vb.mean(0) - va.mean(0)
+    if direction @ direction < 1e-18:
+        return False
+    # Minkowski difference B - A; the origin is outside iff the bodies are apart.
+    simplex = []
+    for _ in range(iterations):
+        norm = np.linalg.norm(direction)
+        if norm < 1e-12:
+            return False
+        d = direction / norm
+        projected_a, projected_b = va @ d, vb @ d
+        # Strictly separating plane along d: certify and stop.
+        if projected_a.max() < projected_b.min():
+            return True
+        support = vb[np.argmin(projected_b)] - va[np.argmax(projected_a)]
+        if any(np.allclose(support, s, atol=1e-12) for s in simplex):
+            return False
+        simplex.append(support)
+        closest, simplex = _closest_simplex(simplex)
+        if len(simplex) == 4 or closest @ closest < 1e-18:
+            return False
+        direction = closest
+    return False
 
 
 def overlap_radius(a, b, tolerance=0.0005):
@@ -96,6 +173,10 @@ def overlap_radius(a, b, tolerance=0.0005):
         np.minimum(a["high"], b["high"]) - np.maximum(a["low"], b["low"])
         <= 2 * tolerance
     ):
+        return 0.0
+    # Cheap exact separating plane first: the face-axis products below cost
+    # thousands of faces times thousands of vertices per pair.
+    if separated(a, b):
         return 0.0
     for first, second in ((a, b), (b, a)):
         minimum = (first["normals"] @ second["vertices"].T).min(1) + first["offsets"]

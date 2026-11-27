@@ -24,6 +24,10 @@ class CalibrationBar(tk.Frame):
         self.action = ControlButton(self, text="", command=lambda: None)
         self.action.pack(side="right", padx=(12, 0))
         self.retry = ControlButton(self, text="Retry corners", command=lambda: None)
+        # Always available while recalibrating: return to the saved calibration.
+        self.cancel = ControlButton(
+            self, text="Cancel · restore previous", command=lambda: None
+        )
         self.label.bind(
             "<Configure>", lambda e: self.label.configure(wraplength=max(120, e.width))
         )
@@ -31,6 +35,9 @@ class CalibrationBar(tk.Frame):
     def step(self, message, label="", action=lambda: None, enabled=True, retry=None):
         self.grid(row=4, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 8))
         self.message.set(message)
+        if getattr(self, "on_cancel", None) is not None:
+            self.cancel.configure(command=self.on_cancel)
+            self.cancel.pack(side="right", padx=(12, 0))
         self.retry.pack_forget()
         if retry is not None:
             self.retry.configure(command=retry)

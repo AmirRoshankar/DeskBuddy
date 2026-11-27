@@ -44,6 +44,75 @@ def inside_zone(point, zone):
     )
 
 
+# A 355 ml "211/202" can: 66 mm body, but the top necks down to a 202 end
+# (~54 mm across the seamed lid). The lip a rim grasp pinches is at the lid
+# radius, ~6 mm inside the body wall (manufacturer specs, not measured here).
+LID_DIAMETER_M = 0.0541
+NECK_HEIGHT_M = 0.019
+
+
+def lid_radius(can):
+    return float(can.get("lid_diameter_m", LID_DIAMETER_M)) / 2
+
+
+def to_lid_radius(offset_m, can):
+    """Move a body-radius rim proposal radially onto the real lid seam."""
+    offset = np.asarray(offset_m, float).copy()
+    radial = np.linalg.norm(offset[:2])
+    if radial < 1e-6:
+        return offset, 0.0
+    shift = float(can["diameter_m"]) / 2 - lid_radius(can)
+    offset[:2] *= max(radial - shift, 1e-6) / radial
+    return offset, shift
+
+
+HOLE_TIP_DEPTH_M = 0.010
+# Gripper percent above the close command that indicates an object between
+# the jaws after lifting (rim/lid pinch ~3 mm still stalls a few percent open).
+GRIPPER_HOLD_MARGIN_PERCENT = 2.0
+# The jaw must have risen at least this far since closing, with the can still
+# detected in place on the table, to call an attempt a confirmed miss.
+MISS_GAP_M = 0.015
+HOLE_OUTSIDE_CLEARANCE_M = 0.004
+HOLE_EXTRA_OPENING_M = 0.006
+
+
+def hole_proposal(can, opening):
+    """Jaw pose putting one tip down the pour hole and one outside the wall.
+
+    ``opening`` comes from trajectory.can_opening.detect_opening. The closing
+    axis is radial through the hole; the jaw opens wider than the hole-to-wall
+    span (HOLE_EXTRA_OPENING_M) and then closes, pinching the lid edge.
+    """
+    lid = np.asarray(opening["lid_center_m"][:2], float)
+    hole = np.asarray(opening["center_m"][:2], float)
+    radial = hole - lid
+    if np.linalg.norm(radial) < 0.005:
+        raise ValueError("Pour hole is too close to the lid centre to set a direction")
+    direction = radial / np.linalg.norm(radial)
+    outside = lid + direction * (
+        float(can["diameter_m"]) / 2 + HOLE_OUTSIDE_CLEARANCE_M
+    )
+    span = float(np.linalg.norm(outside - hole))
+    middle = (outside + hole) / 2
+    base = np.asarray(can["center_m"], float)
+    yaw = float(np.arctan2(direction[1], direction[0]))
+    return dict(
+        grasp_mode="hole",
+        offset_m=[
+            float(middle[0] - base[0]),
+            float(middle[1] - base[1]),
+            float(can["height_m"]) - HOLE_TIP_DEPTH_M,
+        ],
+        quaternion_wxyz=[0.0, float(np.cos(yaw / 2)), float(np.sin(yaw / 2)), 0.0],
+        opening_m=span + HOLE_EXTRA_OPENING_M,
+        hole_center_m=list(map(float, opening["center_m"])),
+        lid_center_m=list(map(float, opening["lid_center_m"])),
+        hole_confidence=float(opening["confidence"]),
+        source="camera pour-hole detection; tips straddle the lid edge",
+    )
+
+
 def detect_can(boxes, config, depth=None, intrinsics=None, arm=None, q=None):
     candidates = []
     for box in boxes:
@@ -98,6 +167,8 @@ def detect_can(boxes, config, depth=None, intrinsics=None, arm=None, q=None):
         center_m=center.tolist(),
         diameter_m=0.066,
         height_m=0.12222,
+        lid_diameter_m=LID_DIAMETER_M,
+        neck_height_m=NECK_HEIGHT_M,
         source=source,
         cylinder_fit_median_error_mm=residual_mm,
         confidence=box.confidence,
@@ -139,6 +210,14 @@ def jaw_center(arm, q, percent):
     return tip + rotation @ jaw_geometry(arm, percent)[0]
 
 
+def approach_tilt_limit(height, contact_height, contact_limit):
+    """Allow approach tilt aloft, tightening continuously before contact."""
+    clearance = max(0.0, float(height - contact_height))
+    fraction = np.clip((clearance - 0.005) / 0.035, 0.0, 1.0)
+    fraction = fraction * fraction * (3 - 2 * fraction)
+    return float(contact_limit + (max(45.0, contact_limit) - contact_limit) * fraction)
+
+
 def center_ik(arm, center, seed, percent, preferred_yaw=None, max_tilt_deg=20):
     axis_weight = 0.08
 
@@ -162,6 +241,7 @@ def center_ik(arm, center, seed, percent, preferred_yaw=None, max_tilt_deg=20):
         ]
 
     best = None
+    closest = None
     # Prioritize a reachable jaw-center position rather than allowing the
     # orientation penalty to displace it by centimeters near joint limits.
     for axis_weight in (0.08, 0.02, 0.005):
@@ -189,7 +269,43 @@ def center_ik(arm, center, seed, percent, preferred_yaw=None, max_tilt_deg=20):
             break
 
     if best is None:
-        raise ValueError("No reachable downward can grasp at this location")
+        # Roll-only retries cannot escape a shoulder/elbow posture branch.
+        # Keep the same physical acceptance tests; broaden only the search.
+        alternatives = np.random.default_rng(101).uniform(arm.lower, arm.upper, (20, 5))
+        for initial in alternatives:
+            for axis_weight in (0.08, 0.02):
+                fit = least_squares(
+                    residual,
+                    initial,
+                    bounds=(arm.lower, arm.upper),
+                    ftol=1e-10,
+                    xtol=1e-10,
+                    gtol=1e-10,
+                    max_nfev=160,
+                )
+                q = fit.x
+                gap = float(np.linalg.norm(jaw_center(arm, q, percent) - center))
+                tilt = float(
+                    np.arccos(np.clip(tool_geometry(arm, q)[2] @ [0, 0, -1], -1, 1))
+                )
+                yaw_error = float(np.linalg.norm(residual(q)[11:]))
+                score = (
+                    gap + 0.02 * max(0.0, tilt - np.deg2rad(max_tilt_deg)) + yaw_error
+                )
+                if closest is None or score < closest[0]:
+                    closest = (score, gap, tilt, yaw_error)
+                if (
+                    gap < 0.002
+                    and tilt < np.deg2rad(max_tilt_deg)
+                    and yaw_error < 0.004
+                ):
+                    return q
+        _, gap, tilt, yaw_error = closest
+        raise ValueError(
+            f"Downward IK: best position error {gap * 1000:.1f} mm (max 2), "
+            f"tilt {np.rad2deg(tilt):.1f} deg (max {max_tilt_deg}), "
+            f"yaw residual {yaw_error:.4f} (max .004)"
+        )
     return best[1]
 
 
@@ -253,6 +369,7 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
     center = np.asarray(can["center_m"]).copy()
     yaw = None
     rim = proposal is not None and proposal.get("grasp_mode") == "rim"
+    hole = proposal is not None and proposal.get("grasp_mode") == "hole"
     opening = can["diameter_m"] + 0.006
     if proposal is not None:
         center += np.array(proposal["offset_m"])
@@ -261,6 +378,8 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
         opening = (
             float(np.clip(proposal["opening_m"], 0.005, 0.012))
             if rim
+            else float(np.clip(proposal["opening_m"], 0.012, 0.045))
+            if hole
             else float(
                 np.clip(
                     proposal["opening_m"],
@@ -272,8 +391,18 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
     else:
         center[2] += 0.55 * can["height_m"]
     opened = opening_for_width(arm, opening)
-    closed = opening_for_width(arm, 0.0015 if rim else can["diameter_m"] - 0.001)
-    max_tilt = 35 if rim else 20
+    # Command a close well past the surface: a position servo only squeezes in
+    # proportion to how far its goal is beyond contact (torque-limited).
+    closed = opening_for_width(
+        arm, 0.0015 if rim or hole else max(0.0015, can["diameter_m"] - 0.012)
+    )
+    # Where the jaws actually stop on the can; used for held-can geometry.
+    contact = opening_for_width(
+        arm, 0.0015 if rim or hole else can["diameter_m"] - 0.001
+    )
+    # The hole tip descends vertically through a ~14 mm opening; 25 degrees of
+    # jaw tilt shifts the finger shaft ~4.7 mm over a 10 mm insertion.
+    max_tilt = 35 if rim else 25 if hole else 20
     q = center_ik(
         arm, center, np.asarray(start), opened, preferred_yaw=yaw, max_tilt_deg=max_tilt
     )
@@ -283,7 +412,7 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
         deficit = cfg["workspace_min_m"][2] - arm.fk(q)[2]
         if deficit <= 0:
             break
-        if rim:
+        if rim or hole:
             raise ValueError(
                 "Workspace Z floor excludes the can lip; no descent planned"
             )
@@ -295,20 +424,27 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
         q = center_ik(arm, center, q, opened, preferred_yaw=yaw, max_tilt_deg=max_tilt)
     check_workspace(arm.fk(q), cfg, label="Can grasp tip")
     above_q = None
+    pregrasp_failures = []
     for lift in sorted(
         {max(0.02, min(0.05, config["hover_m"])), 0.04, 0.03, 0.02}, reverse=True
     ):
         above = center + [0, 0, lift]
         try:
             above_q = center_ik(
-                arm, above, q, opened, preferred_yaw=yaw, max_tilt_deg=max_tilt
+                arm,
+                above,
+                q,
+                opened,
+                preferred_yaw=yaw,
+                max_tilt_deg=approach_tilt_limit(above[2], center[2], max_tilt),
             )
             check_workspace(arm.fk(above_q), cfg, label="Can pregrasp tip")
             break
-        except ValueError:
+        except ValueError as exc:
+            pregrasp_failures.append(f"+{lift * 100:.0f} cm: {exc}")
             above_q = None
     if above_q is None:
-        raise ValueError("No reachable pregrasp above the can within current bounds")
+        raise ValueError("Can pregrasp failed - " + "; ".join(pregrasp_failures))
     first = plan_joint_route(
         arm, start, arm.fk(above_q), cfg, [], 1, 0, goal_pose=above_q
     )
@@ -323,7 +459,9 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
                     path[-1],
                     opened,
                     preferred_yaw=yaw,
-                    max_tilt_deg=max_tilt,
+                    max_tilt_deg=approach_tilt_limit(
+                        (a * (1 - t) + b * t)[2], center[2], max_tilt
+                    ),
                 )
             )
         space = JointSpace(arm, cfg, [], path[0])
@@ -347,7 +485,9 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
     down = vertical(above, center, above_q)
     up = vertical(center, above, down.joints_rad[-1])
     if (
-        carried_can_clearance(arm, up.joints_rad, down.joints_rad[-1], can, closed, cfg)
+        carried_can_clearance(
+            arm, up.joints_rad, down.joints_rad[-1], can, contact, cfg
+        )
         < -0.001
     ):
         raise ValueError("Held can would overlap the table during lift")
@@ -400,7 +540,12 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
                 )
                 if (
                     carried_can_clearance(
-                        arm, candidate.joints_rad, down.joints_rad[-1], can, closed, cfg
+                        arm,
+                        candidate.joints_rad,
+                        down.joints_rad[-1],
+                        can,
+                        contact,
+                        cfg,
                     )
                     < -0.001
                 ):
@@ -423,11 +568,16 @@ def plan_can_cycle(arm, start, config, can, proposal=None, deadline=None):
         poses.extend(phase.joints_rad[1:])
     request = dict(
         can=can,
-        grasp_method="imf" if proposal is not None else "numerical cylinder baseline",
+        grasp_method="camera pour-hole"
+        if hole
+        else "imf"
+        if proposal is not None
+        else "numerical cylinder baseline",
         model_proposal=proposal,
         phases=[pack(p) for p in phases],
         open_percent=opened,
         close_percent=closed,
+        contact_percent=contact,
         drop_tip_m=drop.tolist(),
         jaw_mapping="nominal URDF; not measured force/contact",
         verification="not yet physically validated",
@@ -454,6 +604,12 @@ def learned_can_cycle(arm, start, config, can, excluded_angles=()):
         checkpoint="runs/flowreach/can-rim-grasps-v1/imf.pt",
     )
     rows = [row for row in rows if row["geometric_valid"]]
+    # The model was trained with the lip at the body radius; the real lip is
+    # on the narrower lid. Correct each proposal before planning.
+    for row in rows:
+        offset, shift = to_lid_radius(row["offset_m"], can)
+        row["offset_m"] = offset.tolist()
+        row["lid_radius_correction_m"] = shift
     rows = [
         row
         for row in rows
@@ -494,6 +650,69 @@ def learned_can_cycle(arm, start, config, can, excluded_angles=()):
     cfg["can_request"]["grasp_mode"] = "imf_rim"
     cfg["can_request"]["candidates_sampled"] = 32
     cfg["can_request"]["executable_candidates_checked"] = len(feasible)
+    return plan, cfg
+
+
+def fingertips(arm, q, percent):
+    """Fixed and moving fingertip positions at a jaw opening (nominal URDF)."""
+    fixed = arm.fk(q)
+    return fixed, 2 * jaw_center(arm, q, percent) - fixed
+
+
+def center_tip_in_hole(arm, start, can, proposal, iterations=4):
+    """Shift the jaw so the in-hole fingertip is dead centre on the hole.
+
+    The jaw centre is the midpoint of two asymmetric fingers (one fixed, one
+    rotating), so placing the midpoint geometrically left the inside tip a few
+    millimetres off the hole centre, i.e. near its edge. Solve the actual
+    grasp pose, measure where each tip lands, and move the jaw until the tip
+    nearest the hole sits on its centre at the insertion depth. The opening is
+    widened if the outside tip would not clear the can wall.
+    """
+    proposal = dict(proposal)
+    base = np.asarray(can["center_m"], float)
+    hole = np.asarray(proposal["hole_center_m"], float)
+    target_z = base[2] + float(can["height_m"]) - HOLE_TIP_DEPTH_M
+    w, x, y, z = proposal["quaternion_wxyz"]
+    yaw = float(np.arctan2(2 * (x * y + w * z), 1 - 2 * (y * y + z * z)))
+    wall = float(can["diameter_m"]) / 2 + 0.002
+    inside = None
+    for _ in range(iterations):
+        opening = float(np.clip(proposal["opening_m"], 0.012, 0.045))
+        percent = opening_for_width(arm, opening)
+        center = base + np.asarray(proposal["offset_m"])
+        q = center_ik(arm, center, start, percent, preferred_yaw=yaw, max_tilt_deg=25)
+        tips = fingertips(arm, q, percent)
+        index = int(np.argmin([np.linalg.norm(t[:2] - hole[:2]) for t in tips]))
+        inside, outside = tips[index], tips[1 - index]
+        error = np.r_[hole[:2] - inside[:2], target_z - inside[2]]
+        clearance = wall - np.linalg.norm(outside[:2] - base[:2])
+        offset = np.asarray(proposal["offset_m"], float) + error
+        proposal["offset_m"] = offset.tolist()
+        if clearance > 0:
+            proposal["opening_m"] = opening + clearance + 0.001
+        if np.linalg.norm(error) < 0.0005 and clearance <= 0:
+            break
+    proposal.update(
+        inside_tip="fixed" if index == 0 else "moving",
+        planned_tip_error_m=float(np.linalg.norm(hole[:2] - inside[:2])),
+    )
+    return proposal
+
+
+def hole_can_cycle(arm, start, config, can, opening):
+    """Plan the pour-hole grasp; the can axis comes from the edge-fitted lid."""
+    can = dict(can)
+    center = np.asarray(can["center_m"], float).copy()
+    center[:2] = opening["lid_center_m"][:2]
+    can["center_m"] = center.tolist()
+    can["source"] = str(can.get("source", "")) + " + edge-fitted lid centre"
+    proposal = center_tip_in_hole(arm, start, can, hole_proposal(can, opening))
+    plan, cfg = plan_can_cycle(arm, start, config, can, proposal=proposal)
+    cfg["can_request"]["grasp_mode"] = "hole"
+    cfg["can_request"]["opening_detection"] = {
+        k: v for k, v in opening.items() if k not in ("pixel",)
+    }
     return plan, cfg
 
 
@@ -628,10 +847,276 @@ def execute_can(bus, selected, config, stopped, publish, read_live=None):
         verifier = PickupVerifier(cfg, request["can"], read_live, stopped)
         return request["open_percent"], request["close_percent"]
 
+    def can_left_behind(lifted_at, frames=2, timeout=3.0):
+        """Object detection after the lift: is the can still on the table,
+        well below the jaw? True = confirmed miss, False = not there, None =
+        no fresh detection.
+        """
+        if read_live is None:
+            return None
+        original = np.asarray(request["can"]["center_m"][:2], float)
+        contact = request.get("contact_percent", request["close_percent"])
+        # How far the jaw rose since closing: a held can's bottom would now be
+        # this far above the table, so a can still detected on the table with
+        # this gap is clearly not in the gripper.
+        gap = float(
+            jaw_center(arm, observed(), contact)[2]
+            - jaw_center(arm, grasp_pose, contact)[2]
+        )
+        seen, last_stamp = [], lifted_at + 0.2
+        deadline = time.monotonic() + timeout
+        while len(seen) < frames and time.monotonic() < deadline and not stopped():
+            try:
+                detection = (read_live() or {}).get("obstacle_detection") or {}
+            except (OSError, ValueError):
+                detection = {}
+            stamp = detection.get("detection_unix_s", 0)
+            if stamp > last_stamp:
+                last_stamp = stamp
+                on_table = False
+                for box in detection.get("raw_obstacle_boxes", []):
+                    low, high = np.asarray(box["low_m"]), np.asarray(box["high_m"])
+                    if (
+                        np.linalg.norm((low[:2] + high[:2]) / 2 - original) < 0.025
+                        and 0.08 < high[2] - low[2] < 0.16
+                    ):
+                        on_table = True
+                seen.append(on_table)
+            else:
+                time.sleep(0.1)
+        publish(
+            dict(
+                pickup_detection=dict(
+                    frames=len(seen),
+                    can_on_table=seen,
+                    jaw_lift_mm=round(gap * 1000, 1),
+                )
+            )
+        )
+        if len(seen) < frames:
+            return None
+        if all(seen) and gap >= MISS_GAP_M:
+            return True
+        if not any(seen):
+            return False
+        return None
+
+    def verify_pickup():
+        lifted_at = time.time()
+        followed = verifier.check(
+            arm,
+            grasp_pose,
+            observed(),
+            request.get("contact_percent", request["close_percent"]),
+        )
+        if followed:
+            return True
+        # Before calling it a miss (or giving up as uncertain), confirm with
+        # object detection: the can still on the table, a clear gap below the
+        # lifted jaw. Only a confirmed miss triggers a new attempt.
+        left = can_left_behind(lifted_at)
+        if left:
+            publish(dict(phase="Can still on the table; retrying"))
+            return False
+        if followed is False and left is None:
+            return False
+        # Cameras undecided: a gripper held open well past its close command
+        # after the lift means something is still between the jaws.
+        try:
+            position = float(
+                bus.sync_read("Present_Position", ["gripper"], num_retry=2)["gripper"]
+            )
+        except (OSError, KeyError, RuntimeError, ValueError):
+            return None
+        if position >= request["close_percent"] + GRIPPER_HOLD_MARGIN_PERCENT:
+            publish(
+                dict(
+                    pickup_evidence=f"gripper stalled at {position:.1f}% "
+                    f"(commanded {request['close_percent']:.1f}%) after lift",
+                )
+            )
+            return True
+        return None
+
+    def run_joints(joints, info):
+        from .trajectory.joint_planner import timed_joint_plan
+
+        plan = timed_joint_plan(
+            arm,
+            np.vstack([observed(), np.asarray(joints)]),
+            arm.fk(np.asarray(joints)[-1]),
+            cfg,
+            info,
+        )
+        last[:] = execute_target(
+            bus, plan.target_m, cfg, stopped, publish, selected_plan=plan
+        )
+
+    def fresh_measurement():
+        from .can_pickup import read_images
+        from .can_servo import measure, save_log
+
+        arrived = time.time()
+        frames = None
+        deadline = time.monotonic() + 2.0
+        while frames is None and time.monotonic() < deadline and not stopped():
+            try:
+                frames = read_images(read_live, arrived)
+            except (OSError, ValueError):
+                frames = None
+            if frames is None:
+                time.sleep(0.05)
+        if frames is None:
+            return None
+        _, images, live = frames
+        debug = []
+        try:
+            report = measure(
+                images,
+                live["intrinsics"],
+                cfg,
+                arm,
+                observed(),
+                request["open_percent"],
+                request["can"],
+                debug,
+            )
+        except (ValueError, KeyError, RuntimeError):
+            return None
+        try:
+            report["log_folder"] = str(save_log(report, images, debug))
+        except OSError:
+            pass
+        return report
+
+    def hole_miss():
+        """Camera estimate of in-hole tip minus hole centre (XY), or None."""
+        report = fresh_measurement()
+        if report is None or "relative_error_m" not in report:
+            return None
+        proposal = request["model_proposal"]
+        fixed, moving = fingertips(arm, observed(), request["open_percent"])
+        tip = fixed if proposal.get("inside_tip") == "fixed" else moving
+        return (
+            tip[:2]
+            + np.asarray(report["relative_error_m"])
+            - np.asarray(proposal["hole_center_m"][:2])
+        )
+
+    def shift_and_replan(miss, retract):
+        """Back out along the path we came, then replan aimed at the hole."""
+        nonlocal phases, request
+        if len(retract):
+            run_joints(
+                retract,
+                dict(
+                    trajectory_method="hole retract",
+                    obstacles_m=[],
+                    scene_revision=0,
+                    allow_object_collisions=False,
+                ),
+            )
+        can = dict(request["can"])
+        center = np.asarray(can["center_m"], float).copy()
+        center[:2] -= miss
+        can["center_m"] = center.tolist()
+        proposal = dict(request["model_proposal"])
+        proposal["hole_center_m"] = (
+            np.asarray(proposal["hole_center_m"]) - np.r_[miss, 0]
+        ).tolist()
+        _, job = plan_can_cycle(arm, observed(), cfg, can, proposal=proposal)
+        updated = job["can_request"]
+        for key in ("grasp_mode", "grasp_method", "opening_detection"):
+            if key in request:
+                updated[key] = request[key]
+        updated.setdefault("hole_readjustments", [])
+        updated["hole_readjustments"] = request.get("hole_readjustments", []) + [
+            np.asarray(miss).tolist()
+        ]
+        request = updated
+        phases = [unpack(p) for p in request["phases"]]
+        hop = phases[0]
+        run_joints(hop.joints_rad[1:], hop.planner_info[0])
+
+    def hole_insertion(tolerance_entry=0.0025, tolerance_inserted=0.004, tries=3):
+        """Descend to just above the hole, check with cameras, insert, re-check.
+
+        A confirmed miss backs the jaw out along its own path and replans
+        aimed at the measured hole; unknown evidence proceeds (the pickup
+        check after lifting still catches a failed grasp).
+        """
+        for attempt in range(tries):
+            down = phases[1].joints_rad
+            seam_z = request["can"]["center_m"][2] + request["can"]["height_m"]
+            inside = request["model_proposal"].get("inside_tip", "moving")
+            heights = [
+                fingertips(arm, q, request["open_percent"])[
+                    0 if inside == "fixed" else 1
+                ][2]
+                for q in down
+            ]
+            entry = next(
+                (i for i, h in enumerate(heights) if h <= seam_z + 0.004),
+                len(down) - 1,
+            )
+            info = dict(
+                trajectory_method="hole descent",
+                obstacles_m=[],
+                scene_revision=0,
+                allow_object_collisions=False,
+            )
+            if entry >= 1:
+                run_joints(down[1 : entry + 1], info)
+            miss = hole_miss()
+            publish(
+                dict(
+                    phase="Pour hole: aligning above opening",
+                    hole_miss_mm=None
+                    if miss is None
+                    else float(np.linalg.norm(miss) * 1000),
+                )
+            )
+            last_attempt = attempt == tries - 1
+            if (
+                miss is not None
+                and np.linalg.norm(miss) > tolerance_entry
+                and not last_attempt
+            ):
+                shift_and_replan(miss, down[:entry][::-1])
+                continue
+            if entry + 1 < len(down):
+                run_joints(down[entry + 1 :], info)
+            miss = hole_miss()
+            publish(
+                dict(
+                    phase="Pour hole: checking tip is inside",
+                    hole_miss_mm=None
+                    if miss is None
+                    else float(np.linalg.norm(miss) * 1000),
+                )
+            )
+            if (
+                miss is not None
+                and np.linalg.norm(miss) > tolerance_inserted
+                and not last_attempt
+            ):
+                shift_and_replan(miss, down[:-1][::-1])
+                continue
+            return
+
     def move(index):
         nonlocal grasp_pose
         from .trajectory.joint_planner import timed_joint_plan
 
+        if (
+            index == 1
+            and read_live is not None
+            and request.get("grasp_mode") == "hole"
+            and request.get("model_proposal")
+        ):
+            hole_insertion()
+            grasp_pose = observed()
+            return
         plan = phases[index]
         plan = timed_joint_plan(
             arm,
@@ -643,8 +1128,156 @@ def execute_can(bus, selected, config, stopped, publish, read_live=None):
         last[:] = execute_target(
             bus, plan.target_m, cfg, stopped, publish, selected_plan=plan
         )
+        if index == 0 and read_live is not None:
+            camera_guidance()
         if index == 1:
             grasp_pose = observed()
+
+    def camera_guidance():
+        """Close the webcam loop above the can, then rebuild the descent."""
+        nonlocal phases, request
+        import json
+        from pathlib import Path
+
+        from .local_visual_servo import measure_jacobian, refine
+        from .trajectory.joint_planner import plan_joint_route
+        from .webcam_servo import measurement, read_frame
+
+        desired = jaw_center(arm, phases[1].joints_rad[-1], request["open_percent"])
+        original_can = copy.deepcopy(request["can"])
+        hole = request.get("grasp_mode") == "hole"
+        last_frame = time.time()
+
+        def observe_image():
+            nonlocal last_frame
+            deadline = time.monotonic() + 3.5
+            samples = []
+            while len(samples) < 3 and time.monotonic() < deadline and not stopped():
+                try:
+                    frames = read_frame(read_live, last_frame)
+                    if frames is None:
+                        time.sleep(0.04)
+                        continue
+                    stamp, image, tracked = frames
+                    last_frame = stamp
+                    if tracked and (
+                        not tracked.get("valid")
+                        or abs(stamp - tracked.get("unix_time_s", 0)) > 0.5
+                    ):
+                        continue
+                    view_config = dict(cfg, can_request=request)
+                    sample = measurement(
+                        image,
+                        view_config,
+                        arm,
+                        observed(),
+                        request["open_percent"],
+                        original_can,
+                        desired,
+                        hole=hole,
+                        tracked_tip=tracked["pixel"] if tracked else None,
+                    )
+                    if sample is not None:
+                        samples.append(sample)
+                except (ValueError, KeyError, RuntimeError, OSError):
+                    time.sleep(0.04)
+            if len(samples) < 2:
+                return None
+            return dict(
+                error_px=np.median([r["error_px"] for r in samples], axis=0),
+                jacobian_px_m=np.median([r["jacobian_px_m"] for r in samples], axis=0),
+            )
+
+        def move_xy(delta):
+            before = observed()
+            position = jaw_center(arm, before, request["open_percent"])
+            goal_center = position + np.r_[delta, 0.0]
+            goal = center_ik(
+                arm,
+                goal_center,
+                before,
+                request["open_percent"],
+                max_tilt_deg=approach_tilt_limit(
+                    position[2],
+                    desired[2],
+                    35 if request.get("grasp_mode") == "rim" else 25 if hole else 20,
+                ),
+            )
+            if np.max(np.abs(goal - before)) > np.deg2rad(5):
+                raise ValueError(
+                    "Visual correction requires a different posture; retaining the planned approach"
+                )
+            plan = plan_joint_route(
+                arm, before, arm.fk(goal), cfg, [], 1, 0, goal_pose=goal
+            )
+            last[:] = execute_target(
+                bus, plan.target_m, cfg, stopped, publish, selected_plan=plan
+            )
+            return (jaw_center(arm, observed(), request["open_percent"]) - position)[:2]
+
+        try:
+            current_tracking = (read_live() or {}).get("tip_tracking")
+            if not current_tracking or not current_tracking.get("valid"):
+                publish(
+                    dict(
+                        camera_guidance="Select tip in webcam before measured fine alignment; using planned approach"
+                    )
+                )
+                return
+            publish(dict(phase="Measuring webcam response with 2 mm XY probes"))
+            probe = measure_jacobian(observe_image, move_xy, stopped)
+            publish(dict(visual_probe=probe))
+            if not probe["ready"]:
+                if stopped():
+                    raise RuntimeError("Operator stopped visual probes; hold retained")
+                publish(dict(camera_guidance=probe["status"]))
+                return
+            report = refine(
+                observe_image,
+                move_xy,
+                stopped,
+                lambda row: publish(
+                    dict(phase="Webcam fine alignment", visual_servo=row)
+                ),
+                initial_jacobian=probe["jacobian_px_m"],
+            )
+            report["probe"] = probe
+        except (ValueError, RuntimeError) as exc:
+            if stopped():
+                raise
+            raise ValueError(f"Webcam correction could not complete: {exc}") from exc
+        publish(dict(camera_guidance=report["status"], visual_servo=report))
+        if stopped():
+            raise RuntimeError("Operator stopped visual alignment; hold retained")
+        directory = Path("runs/servo-log")
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"visual-servo-{time.time_ns()}.json").write_text(
+            json.dumps(report, indent=2), encoding="utf-8"
+        )
+        correction = np.asarray(report["correction_m"])
+        if np.linalg.norm(correction) < 0.0001:
+            return
+        # Carry the learned offset into the remaining descent, rather than
+        # returning to the original (uncorrected) phase after visual alignment.
+        can = copy.deepcopy(original_can)
+        can["center_m"] = (
+            np.asarray(can["center_m"]) + np.r_[correction, 0.0]
+        ).tolist()
+        proposal = copy.deepcopy(request.get("model_proposal"))
+        if proposal and proposal.get("hole_center_m"):
+            proposal["hole_center_m"] = (
+                np.asarray(proposal["hole_center_m"]) + np.r_[correction, 0.0]
+            ).tolist()
+        _, job = plan_can_cycle(arm, observed(), cfg, can, proposal=proposal)
+        updated = job["can_request"]
+        for key in ("grasp_mode", "grasp_method", "opening_detection"):
+            if key in request:
+                updated[key] = request[key]
+        updated["visual_servo"] = report
+        request = updated
+        phases = [unpack(p) for p in request["phases"]]
+        hop = phases[0]
+        run_joints(hop.joints_rad[1:], hop.planner_info[0])
 
     def grip(percent):
         ramp_gripper(bus, percent, stopped)
@@ -653,7 +1286,7 @@ def execute_can(bus, selected, config, stopped, publish, read_live=None):
         prepare,
         move,
         grip,
-        lambda: verifier.check(arm, grasp_pose, observed(), request["close_percent"]),
+        verify_pickup,
         stopped,
         publish,
     )

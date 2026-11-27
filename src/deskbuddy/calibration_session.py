@@ -102,7 +102,10 @@ def assess_captures(rows):
 
 def invalidate_camera(config, config_path):
     # No motor commands: callers keep the existing torque state unchanged.
-    write_json("runs/calibration_before_reset.json", config)
+    # Keep the last *working* calibration: pressing Recalibrate twice must not
+    # overwrite the backup with an already-invalidated configuration.
+    if config.get("T_base_camera"):
+        write_json("runs/calibration_before_reset.json", config)
     config["calibration_verified"] = False
     config["T_base_camera"] = None
     config["test_bed"] = None

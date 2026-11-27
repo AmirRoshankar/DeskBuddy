@@ -563,14 +563,17 @@ class YoloService:
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="yolo")
         self.future = None
         self.signature = None
-        self.tracker = ObjectTracker(min_hits=3, max_age_s=10, max_misses=40)
+        self.tracker = ObjectTracker(min_hits=2, max_age_s=10, max_misses=40)
         self.stable = StableBoxes(
-            confirmations=4, removal_confirmations=6, world_m=0.02, pixels=16
+            confirmations=2, removal_confirmations=3, world_m=0.012, pixels=10
         )
         self.last_image = None
         self.last_secondary_image = None
         self.last_inference = 0.0
         self.skipped_frames = 0
+        # Raised by the GUI while a path preview is being computed, so object
+        # detection geometry does not compete with planning for the CPU.
+        self.min_interval_s = 0.05
 
     def update(self, rgb, depth, intrinsics, config, arm=None, q=None, secondary=None):
         signature = repr(
@@ -601,11 +604,11 @@ class YoloService:
                         skipped_frames=self.skipped_frames,
                         tracking="low-motion Kalman + Hungarian association",
                         stability=dict(
-                            world_deadband_m=0.02,
-                            pixel_deadband=16,
-                            confirmations=4,
-                            removal_confirmations=6,
-                            birth_observations=3,
+                            world_deadband_m=0.012,
+                            pixel_deadband=10,
+                            confirmations=2,
+                            removal_confirmations=3,
+                            birth_observations=2,
                             occlusion_retention_s=10,
                         ),
                     )
@@ -618,9 +621,9 @@ class YoloService:
             self.future = None
         if self.future is None:
             if self.signature != signature:
-                self.tracker = ObjectTracker(min_hits=3, max_age_s=10, max_misses=40)
+                self.tracker = ObjectTracker(min_hits=2, max_age_s=10, max_misses=40)
                 self.stable = StableBoxes(
-                    confirmations=4, removal_confirmations=6, world_m=0.02, pixels=16
+                    confirmations=2, removal_confirmations=3, world_m=0.012, pixels=10
                 )
                 self.last_image = None
             now = time.monotonic()
@@ -633,7 +636,7 @@ class YoloService:
             )
             elapsed = now - self.last_inference
             # Periodic refresh detects slow changes and updates depth estimates.
-            if elapsed < 0.05 or (
+            if elapsed < getattr(self, "min_interval_s", 0.05) or (
                 elapsed < 2.0
                 and not self.stable.pending
                 and not self.tracker.pending

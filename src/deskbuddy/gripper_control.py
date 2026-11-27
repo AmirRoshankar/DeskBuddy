@@ -28,6 +28,7 @@ def ramp_gripper(bus, percent, stopped, sleep=time.sleep):
             raise RuntimeError("Grab stopped")
         bus.enable_torque(["gripper"], num_retry=2)
     blocked = 0
+    contact = False
     for goal in np.linspace(
         current, percent, max(2, int(abs(percent - current) / 2) + 1)
     ):
@@ -43,10 +44,31 @@ def ramp_gripper(bus, percent, stopped, sleep=time.sleep):
         ]
         blocked = blocked + 1 if percent < current and position - goal > 8 else 0
         if blocked >= 3:
+            contact = True
             break
         bus.sync_write("Goal_Position", {"gripper": float(goal)}, num_retry=2)
         sleep(0.05)
+    if contact:
+        # The jaws touched the object. Stopping the ramp there left the goal
+        # only ~8% past contact, so a position servo squeezed weakly and the
+        # gripper looked "not fully closed". Command the requested close so
+        # the servo grips with its own torque limit, then let force build.
+        bus.sync_write("Goal_Position", {"gripper": float(percent)}, num_retry=2)
+        for _ in range(6):
+            sleep(0.05)
+            if stopped():
+                raise RuntimeError("Grab stopped; gripper hold retained")
+        temperature = bus.sync_read(
+            "Present_Temperature", ["gripper"], normalize=False, num_retry=2
+        )["gripper"]
+        if temperature >= 50:
+            raise RuntimeError("Gripper temperature limit; hold retained")
     position = float(
         bus.sync_read("Present_Position", ["gripper"], num_retry=2)["gripper"]
     )
-    return dict(gripper_percent=position, gripper_closed=position <= 5)
+    return dict(
+        gripper_percent=position,
+        gripper_closed=position <= 5,
+        gripper_contact=contact,
+        gripper_goal_percent=float(percent),
+    )

@@ -29,6 +29,57 @@ def project(point, transform, intrinsics):
     return tuple(float(x) for x in pixel) if np.isfinite(pixel).all() else None
 
 
+_VIEW_CACHE = {}
+
+
+def view_project(point, config, intrinsics):
+    """Project a base point into the RealSense image *as drawn for the user*.
+
+    Anchored to the A4 corners the operator placed: table points land exactly
+    on the clicked paper (the same homography used to turn clicks into table
+    points), and elevated points get the same correction. Without A4 corner
+    pixels it is the plain camera projection.
+    """
+    bed = config.get("test_bed") or {}
+    pixels = bed.get("corner_pixels")
+    if pixels is None or config.get("T_base_camera") is None:
+        return project(point, config["T_base_camera"], intrinsics)
+    key = repr(
+        (
+            config["T_base_camera"],
+            pixels,
+            bed.get("corners_base_m"),
+            dict(
+                (
+                    k,
+                    intrinsics[k]
+                    if isinstance(intrinsics, dict)
+                    else getattr(intrinsics, k),
+                )
+                for k in ("fx", "fy", "ppx", "ppy")
+            ),
+            config.get("assume_level_table"),
+            config.get("table_z_m"),
+        )
+    )
+    function = _VIEW_CACHE.get(key)
+    if function is None:
+        from .trajectory.rgb_can_perception import projector
+
+        world = corners(config, inset=False)
+        if world is None:
+            return project(point, config["T_base_camera"], intrinsics)
+        function = projector(config["T_base_camera"], intrinsics, world, pixels)
+        if len(_VIEW_CACHE) > 8:
+            _VIEW_CACHE.clear()
+        _VIEW_CACHE[key] = function
+    raw = project(point, config["T_base_camera"], intrinsics)
+    if raw is None:
+        return None
+    pixel = function(np.asarray(point, float)[None])[0]
+    return tuple(float(v) for v in pixel) if np.isfinite(pixel).all() else None
+
+
 def visible_hover_bounds(surface, bounds, transform, intrinsics, size, margin=16):
     """Intersect a vertical target segment with the camera's visible frustum."""
     inverse = np.linalg.inv(np.asarray(transform, float))
@@ -76,8 +127,8 @@ def grid_segments(config, intrinsics, divisions=4):
                 (bed[0] * (1 - s) + bed[3] * s, bed[1] * (1 - s) + bed[2] * s),
             ):
                 p, q = (
-                    project(a, config["T_base_camera"], intrinsics),
-                    project(b, config["T_base_camera"], intrinsics),
+                    view_project(a, config, intrinsics),
+                    view_project(b, config, intrinsics),
                 )
                 if p is not None and q is not None:
                     result.append((p, q, s in (0, 1)))
@@ -89,8 +140,8 @@ def grid_segments(config, intrinsics, divisions=4):
             a = [lo[0], lo[1], config["table_z_m"]]
             b = [hi[0], hi[1], config["table_z_m"]]
             a[axis] = b[axis] = value
-            p = project(a, config["T_base_camera"], intrinsics)
-            q = project(b, config["T_base_camera"], intrinsics)
+            p = view_project(a, config, intrinsics)
+            q = view_project(b, config, intrinsics)
             if p is not None and q is not None:
                 result.append((p, q, index in (0, divisions)))
     return result
@@ -98,8 +149,8 @@ def grid_segments(config, intrinsics, divisions=4):
 
 def estimated_goal_check(tip, target, config, intrinsics):
     gap = float(np.linalg.norm(np.asarray(tip) - target))
-    tip_pixel = project(tip, config["T_base_camera"], intrinsics)
-    target_pixel = project(target, config["T_base_camera"], intrinsics)
+    tip_pixel = view_project(tip, config, intrinsics)
+    target_pixel = view_project(target, config, intrinsics)
     pixel_gap = (
         float(np.linalg.norm(np.array(tip_pixel) - target_pixel))
         if tip_pixel and target_pixel
@@ -127,13 +178,13 @@ def draw_overlays(
     if config.get("show_workspace", True):
         for a, b in box_edges(config):
             p, q = (
-                project(a, config["T_base_camera"], intrinsics),
-                project(b, config["T_base_camera"], intrinsics),
+                view_project(a, config, intrinsics),
+                view_project(b, config, intrinsics),
             )
             if p is not None and q is not None:
                 draw.line((p, q), fill="#77cbe8", width=2)
         for label, point, axis, _ in box_handles(config):
-            pixel = project(point, config["T_base_camera"], intrinsics)
+            pixel = view_project(point, config, intrinsics)
             if pixel is None:
                 continue
             x, y = pixel
@@ -156,7 +207,7 @@ def draw_overlays(
     lo, hi = config["workspace_min_m"], config["workspace_max_m"]
     bed = corners(config, inset=False)
     if bed is not None:
-        outline = [project(p, config["T_base_camera"], intrinsics) for p in bed]
+        outline = [view_project(p, config, intrinsics) for p in bed]
         if all(p is not None for p in outline):
             draw.line(outline + [outline[0]], fill="#ffe4a6", width=2)
         label = "A4 210 x 297 mm | grid inset 20 mm"
@@ -170,7 +221,7 @@ def draw_overlays(
         measured_q,
         plan,
         config,
-        lambda p: project(p, config["T_base_camera"], intrinsics),
+        lambda p: view_project(p, config, intrinsics),
     )
     draw.text(
         (10, 10),
@@ -201,23 +252,21 @@ def draw_overlays(
 
     if surface is not None:
         marker(
-            project(surface, config["T_base_camera"], intrinsics),
+            view_project(surface, config, intrinsics),
             "#c0c4cd",
             4,
             "table click",
         )
     target_pixel = (
-        project(target, config["T_base_camera"], intrinsics)
-        if target is not None
-        else None
+        view_project(target, config, intrinsics) if target is not None else None
     )
     if target is not None:
         from .motion_overlay import dashed
 
         for a, b in target_guides(target, config):
             p, q = (
-                project(a, config["T_base_camera"], intrinsics),
-                project(b, config["T_base_camera"], intrinsics),
+                view_project(a, config, intrinsics),
+                view_project(b, config, intrinsics),
             )
             if p is not None and q is not None:
                 dashed(draw, p, q, "#68f1a6", width=2, dash=2)
@@ -226,7 +275,7 @@ def draw_overlays(
     if measured_q is None:
         return None
     tip = arm.fk(measured_q)
-    tip_pixel = project(tip, config["T_base_camera"], intrinsics)
+    tip_pixel = view_project(tip, config, intrinsics)
     marker(tip_pixel, "#ff73dc", 6, "tip estimate")
     if target is None:
         return {
@@ -243,3 +292,53 @@ def draw_overlays(
         message += " | within tolerance + projected overlap"
     draw.text((10, 27), message, fill="#f8c4ec", stroke_width=1, stroke_fill="#101820")
     return check
+
+
+def draw_can_estimates(image, project_point, boxes, hole=None):
+    """Estimated can cylinders (body, real lid edge) and the pour hole.
+
+    ``project_point`` maps a base-frame point to a pixel (or None) for this
+    view, so the same estimate is drawn consistently in every camera.
+    """
+    from .can_discard import LID_DIAMETER_M
+
+    draw = ImageDraw.Draw(image)
+    angles = np.linspace(0, 2 * np.pi, 33)
+    ring = np.c_[np.cos(angles), np.sin(angles)]
+
+    def polyline(points, color, width):
+        pixels = [project_point(p) for p in points]
+        for a, b in zip(pixels[:-1], pixels[1:]):
+            if a is not None and b is not None:
+                draw.line((a, b), fill=color, width=width)
+
+    for box in boxes:
+        low, high = np.asarray(box.low, float), np.asarray(box.high, float)
+        size = high - low
+        if not (0.08 < size[2] < 0.16 and max(size[:2]) < 0.09):
+            continue
+        center = (low[:2] + high[:2]) / 2
+        radius = min(size[:2]) / 2
+        bottom = np.c_[center + ring * radius, np.full(len(ring), low[2])]
+        top = np.c_[center + ring * radius, np.full(len(ring), high[2])]
+        lid = np.c_[center + ring * LID_DIAMETER_M / 2, np.full(len(ring), high[2])]
+        polyline(bottom, "#77cbe8", 2)
+        polyline(top, "#77cbe8", 1)
+        polyline(lid, "#e8eef3", 2)
+        for index in (0, 8, 16, 24):
+            polyline([bottom[index], top[index]], "#77cbe8", 1)
+    if hole is not None:
+        point = np.asarray(hole, float)
+        circle = np.c_[point[:2] + ring * 0.007, np.full(len(ring), point[2])]
+        polyline(circle, "#ffd166", 3)
+        for axis in (np.array([0.012, 0, 0]), np.array([0, 0.012, 0])):
+            polyline([point - axis, point + axis], "#ffd166", 2)
+        pixel = project_point(point)
+        if pixel is not None:
+            draw.text(
+                (pixel[0] + 10, pixel[1] - 16),
+                "Pour hole",
+                fill="#ffd166",
+                stroke_width=1,
+                stroke_fill="#171719",
+            )

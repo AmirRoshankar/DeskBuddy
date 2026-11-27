@@ -301,14 +301,14 @@ class ComparisonWindow:
 
         def work():
             from ..trajectory.live_preview import (
-                PlannerSuite,
                 preview_scene,
                 save_preview,
+                shared_suite,
             )
 
             scene = preview_scene(config, boxes)
             if self.suite is None:
-                self.suite = PlannerSuite()
+                self.suite = shared_suite()
             results = [
                 r
                 for r in self.suite.compare(scene, start, goal, count, seed)

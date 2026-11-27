@@ -23,10 +23,22 @@ def plan_home(arm, start, config, boxes, revision):
         restrict_to_test_bed=False,
     )
     try:
-        check_self_collision(arm, start)
+        from .trajectory.joint_planner import start_overlap_allowance
+
+        start_overlap_allowance(arm, start)
     except ValueError as exc:
         raise ValueError(f"Home start pose: {exc}") from exc
-    neutral = np.clip(np.deg2rad([0, -15, 30, 15, 0]), arm.lower, arm.upper)
+    saved = config.get("home_pose_deg")
+    if saved is None:
+        neutral = np.clip(np.deg2rad([0, -15, 30, 15, 0]), arm.lower, arm.upper)
+    else:
+        neutral = np.deg2rad(np.asarray(saved, float))
+        if neutral.shape != (5,) or not np.isfinite(neutral).all():
+            raise ValueError(
+                "Saved Home must contain five finite joint angles; use Set home again"
+            )
+        if (neutral < arm.lower).any() or (neutral > arm.upper).any():
+            raise ValueError(arm.limit_error(neutral, "Saved Home"))
     goals = [neutral]
     # Home is recovery to a fixed rest pose, independent of the selection box.
     # Only this command's private configuration has the recovery workspace.
@@ -45,7 +57,11 @@ def plan_home(arm, start, config, boxes, revision):
                 arm, start, target, cfg, boxes, 1, revision, goal_pose=goal
             )
             plan.planner_info.append(
-                dict(home_preview=True, home_pose_deg=np.rad2deg(goal).tolist())
+                dict(
+                    home_preview=True,
+                    home_pose_deg=np.rad2deg(goal).tolist(),
+                    home_source="saved pose" if saved is not None else "default pose",
+                )
             )
             return plan, cfg
         except ValueError as exc:

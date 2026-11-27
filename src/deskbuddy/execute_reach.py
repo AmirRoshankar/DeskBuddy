@@ -44,6 +44,50 @@ def motor_command(pose, config):
     return dict(zip(JOINTS, values.tolist()))
 
 
+def start_from_measured(plan, measured, config, blend_s=0.5):
+    """Anchor a previewed plan at the freshly measured joints without a jump.
+
+    Overwriting only the first sample with the measurement (encoder noise of a
+    few tenths of a degree) turned the first control interval (4 ms at 250 Hz)
+    into a velocity spike and tripped "Joint velocity limit violated". Blend
+    the offset out smoothly over the first ``blend_s`` seconds, then stretch
+    time if the result would exceed the speed limit anywhere.
+    """
+    from copy import deepcopy
+
+    plan = deepcopy(plan)
+    times = np.asarray(plan.time_s, float)
+    joints = np.asarray(plan.joints_rad, float).copy()
+    offset = np.asarray(measured, float) - joints[0]
+    span = max(min(blend_s, times[-1] - times[0]), 1e-6)
+    weight = np.clip(1 - (times - times[0]) / span, 0.0, 1.0)
+    weight = weight * weight * (3 - 2 * weight)
+    joints += offset[None, :] * weight[:, None]
+    # Preserve the measured first sample, then remove any blend-induced
+    # excursion. A measured start outside a stop may recover inward only.
+    arm = Arm(config.get("model_joint_limits_deg"), config.get("tool_offset_m"))
+    excess = np.maximum(np.maximum(arm.lower - joints[0], joints[0] - arm.upper), 0.0)
+    for index in range(1, len(joints)):
+        allowance = np.minimum(
+            excess,
+            np.maximum(
+                np.maximum(arm.lower - joints[index], joints[index] - arm.upper), 0.0
+            ),
+        )
+        joints[index] = np.clip(
+            joints[index], arm.lower - allowance, arm.upper + allowance
+        )
+        excess = allowance
+    limit = np.deg2rad(config["max_joint_speed_deg_s"])
+    if len(times) > 1:
+        speed = np.max(np.abs(np.diff(joints, axis=0)) / np.diff(times)[:, None])
+        if speed > limit:
+            times = times[0] + (times - times[0]) * (speed / limit) * 1.002
+    plan.time_s = times
+    plan.joints_rad = joints
+    return plan
+
+
 def execute_target(
     bus,
     target,
@@ -220,7 +264,8 @@ def _execute_target_once(
         route = route_info(plan)
         if np.max(np.abs(plan.joints_rad[0] - observed_start)) > np.deg2rad(2):
             raise ValueError("Arm moved since preview; select the target again")
-        plan.joints_rad[0] = observed_start
+        plan = start_from_measured(plan, observed_start, config)
+        route = route_info(plan)
         validate_plan(arm, plan, config)
         if route.get("allow_object_collisions") and not config.get(
             "allow_object_collisions"
@@ -240,6 +285,12 @@ def _execute_target_once(
     previous_reference = observed_start.copy()
     began = clock()
     controller = {"command": previous, "reference": previous_reference}
+    if route:
+        from .trajectory.joint_planner import start_overlap_allowance
+
+        controller["self_overlap_allowance"] = start_overlap_allowance(
+            arm, observed_start
+        )
     scene_monitor = None
     if route and read_scene is not None:
         from .trajectory.scene_monitor import SceneMonitor
@@ -305,7 +356,18 @@ def _execute_target_once(
             except ScenePathBlocked as exc:
                 raise SceneReplanRequested(str(exc)) from exc
         if route:
-            check_self_collision(arm, predicted)
+            from .trajectory.joint_planner import self_overlap
+
+            # A rest pose may start with a tiny hull overlap; allow it only
+            # to shrink, then require full clearance.
+            allowance = controller.get("self_overlap_allowance", 0.0)
+            if allowance > 0:
+                overlap = self_overlap(arm, predicted)
+                if overlap > allowance + 1e-5:
+                    check_self_collision(arm, predicted)
+                controller["self_overlap_allowance"] = overlap
+            else:
+                check_self_collision(arm, predicted)
         if route:
             from .planning import check_workspace
 

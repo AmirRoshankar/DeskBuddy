@@ -2,30 +2,33 @@
 
 [![Tests](https://github.com/AmirRoshankar/DeskBuddy/actions/workflows/tests.yml/badge.svg)](https://github.com/AmirRoshankar/DeskBuddy/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
-![Robot](https://img.shields.io/badge/robot-SO--101-orange)
+![Robot](https://img.shields.io/badge/robot-SO--101-F46D67)
 
-A desktop robotics workbench for learning **kinematics, visual calibration, feedback control and generative motion planning** with an SO-101 follower arm.
+**An interactive robotics workbench that turns a tabletop scene into robot motion.**
 
-Click a target in a shared 3D scene, compare numerical and learned paths, inspect the full-arm geometry, and explicitly execute a checked trajectory. The same project includes offline flow-matching experiments and a soda-can grasp-and-discard workflow.
+DeskBuddy brings perception, inverse kinematics, motion planning and feedback control into one desktop interface. Built around a real **SO-101 follower arm**, it lets you select targets in 3D, compare classical and learned trajectories, and run can pick-and-transfer tasks while watching the robot's estimated world alongside its cameras.
 
-![DeskBuddy dashboard rendered with synthetic data](docs/assets/dashboard-preview.png)
+## See it in action
 
-*The preview is a synthetic application fixture, not a recording of a successful physical grasp.*
+[![DeskBuddy: real SO-101 can pickup and transfer](docs/assets/success-preview.gif)](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
 
-## What works
+**Real robot. Real can.** The `success` recording shows the arm picking up and transferring a soda can, with the live 3D workspace and camera views on screen. The looping excerpt runs at 3x speed.
 
-- **Numerical FK/IK:** URDF geometry, measured joint ranges, calibrated tool point and bounded inverse kinematics.
-- **Shared visual workspace:** RealSense RGB/depth, a second RGB camera, metric A4 alignment, interactive bounds and a pan/rotate/zoom 3D view.
-- **Four simultaneous paths:** Direct, supervised MLP, improved MeanFlow (iMF) and joint-space RRT, with explicit planner selection and collision validation.
-- **Feedback execution:** requested 250 Hz, measured loop timing, absolute-position retries, Kalman state estimates and bounded outer correction. Requested frequency is not guaranteed throughput.
-- **Can experiments:** paired RGB-only can localization, nominal 66 mm diameter /122.22 mm height, body or learned rim proposals, post-lift RGB checks and up to five distinct grasp attempts.
-- **Offline physics:** MuJoCo gravity/contact rollouts and separate physics-filtered iMF training. No hardware is needed for simulation or tests.
+[Watch the full 100-second recording](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
 
-Physical reaching has been tried. **The rim-grasp/retry workflow is not yet physically validated.** A low model residual, collision preview or closed gripper does not prove real positioning accuracy or pickup success.
+## What makes it interesting
 
-## Try it without hardware
+- **Classical robotics meets generative planning.** Numerical FK/IK handles robot geometry; Direct, MLP, improved MeanFlow (**iMF**) and RRT trajectories can be viewed together and compared in the same scene.
+- **A world model you can inspect.** Orbit, pan and zoom the 3D workspace, drag its bounds, select targets from camera or 3D views, and inspect whole-arm geometry and detected objects.
+- **RGB-first tabletop perception.** Two camera views share an A4-based workspace. Known can dimensions support localization; the webcam locates the pour opening as a dark region near the can top. RealSense depth is available as an auxiliary view.
+- **Feedback beyond the planned path.** Encoder feedback, Kalman state estimates, retry-aware serial control and bounded corrections address the gap between a planned motion and the physical arm.
+- **One-click visual tracking.** Select the fixed jaw tip in the webcam. The can pregrasp controller can measure a local image Jacobian with small out-and-return probes, then refine horizontal alignment from observed motion. This is implemented and regression-tested; hardware evaluation is ongoing.
+- **Grasp, lift, verify, retry.** Body, rim and pour-hole experiments share a pick/transfer/drop pipeline, post-lift pickup checks, a user-defined discard zone and up to five grasp attempts.
+- **A reproducible learning lab.** Flow-matching experiments, model comparisons, whole-arm validation and MuJoCo gravity/contact rollouts run separately from hardware.
 
-Python 3.12+; standard Windows Python includes Tk. On Linux the interactive preview needs Tk and a display.
+## Try it without a robot
+
+Use Python 3.12+ with Tk available. Standard Windows Python includes Tk; Linux needs Tk and a display for the desktop interface.
 
 ```bash
 python -m venv .venv
@@ -35,73 +38,74 @@ python -m deskbuddy demo --headless --output runs/offline
 python -m deskbuddy demo
 ```
 
-The headless demo uses synthetic geometry and CPU numerical IK. For optional features:
+The offline demo uses CPU numerical IK and synthetic geometry. Optional extras enable learning, simulation and hardware:
 
 ```bash
-python -m pip install -e ".[flow,viz]"        # learning and plots
-python -m pip install -e ".[simulation]"      # MuJoCo contact/gravity experiments
-python -m pip install -e ".[camera,robot,perception]"  # optional live hardware stack
+python -m pip install -e ".[flow,viz]"                  # model training and plots
+python -m pip install -e ".[simulation]"                # MuJoCo gravity/contact experiments
+python -m pip install -e ".[camera,robot,perception]"    # live cameras, arm and detection
 ```
 
-For Windows/NVIDIA setup, see [installation](docs/guides/installation.md). Hardware setup and calibration are separate from installation. After commissioning a private `configs/local.json`, double-click **Start DeskBuddy.cmd**. Startup reads state; it does not enable torque or command a reach.
+For a commissioned Windows setup, double-click **Start DeskBuddy.cmd**. Startup reads cameras and joint state; motor hold and movement are explicit UI actions. See [installation](docs/guides/installation.md) and [hardware setup](docs/guides/hardware.md).
 
-## How the pieces fit
+## From perception to action
 
 ```mermaid
 flowchart LR
-  Cameras[Calibrated RGB views] --> Scene[Shared world scene]
-  Scene --> Target[Selected target]
+  Cameras[RGB cameras] --> Scene[Shared 3D workspace]
+  Scene --> Target[Selected target or can]
   Target --> Planner[Direct / MLP / iMF / RRT]
-  Planner --> IK[Numerical IK and whole-arm checks]
-  IK --> Preview[3D preview]
-  Preview --> Go[Explicit operator action]
-  Go --> Control[Feedback motion worker]
-  Encoders[Joint encoders] --> Control
+  Planner --> IK[Numerical IK + whole-arm checks]
+  IK --> Control[Encoder feedback controller]
+  Control --> Arm[SO-101]
+  Arm --> Vision[Webcam fine alignment]
+  Vision --> Control
 ```
 
-Flow models propose trajectories or grasp poses. Numerical IK still solves joints, and validators still check the resulting arm motion. The optional detector does not turn noisy depth into can detections: can mode fits a known-size cylinder to **two RGB silhouettes**, while depth remains available for display and other tasks.
+**Flow proposes motion; IK solves geometry; feedback corrects execution.** The learned planner does not replace the robot model. Candidate trajectories are converted to joint motion and checked against the full arm. Near a grasp, visual correction operates in XY while height and insertion remain separate geometric tasks.
 
-## Results, with their limits
+The controller supports a requested **250 Hz** update loop with timing instrumentation; achieved throughput depends on the serial bus and hardware. Camera updates run independently of the motor loop.
 
-The geometric rim model achieved 89.8% held-out **pose validity**. That is not a physical pickup rate. A later contact/gravity benchmark exposed a much harder problem:
+## Explore the research
 
-| One-step iMF on 246 matched held-out simulated cans | Pickup | Complete pick/transfer/drop |
-| --- | ---: | ---: |
-| Geometric-label model | 19/246 | 3/246 |
-| Physics-filtered model | 44/246 | 6/246 |
+The project makes the transition from geometric feasibility to physical manipulation visible: model inputs and losses, identical evaluation conditions, collision checks, simulation outcomes and real demonstrations are documented separately.
 
-These small, low-success results do not establish reliable model superiority. The physics checkpoint remains experimental. The toy simulator does not reproduce the full SO-101, measured fingertip/lid geometry, can deformation or liquid slosh. See [the complete experiment](docs/guides/can-physics-and-retries.md) and [model formulations](docs/research/model-formulation-audit.md).
+| Explore | Read |
+| --- | --- |
+| How MLP, flow matching and iMF are formulated | [Model formulation audit](docs/research/model-formulation-audit.md) |
+| Trajectory learning and planner comparisons | [Trajectory learning](docs/research/trajectory-learning.md) / [Comparison](docs/research/planner-comparison.md) |
+| Learned grasp proposals | [Rim-grasp training](docs/guides/can-rim-grasp-training.md) |
+| Gravity, contact and pickup retries | [Physics experiments](docs/guides/can-physics-and-retries.md) |
+| Whole-arm execution and checks | [Tracking and validation](docs/guides/whole-arm-and-tracking.md) |
 
-## Project layout
+The physical demo is an example execution, not a benchmark success rate. Quantitative simulation and held-out results live with their experiment definitions in the linked reports.
+
+## Find your way around
 
 ```text
-src/deskbuddy/       Application, geometry, control, perception and learning
-tests/              Offline geometry, protocol, UI and simulation regressions
-configs/            Public templates; local.json is private and ignored
-scripts/            Setup, calibration and report tools
-requirements/       Tested Windows/CUDA and simulation dependency records
-docs/guides/        Current operation and architecture
-docs/research/      Experiments, results and reproducible research notes
-docs/assets/        Synthetic previews and plots
-docs/archive/       Explicitly historical development documents
-runs/               Ignored local models, datasets, recordings and runtime state
-local/              Ignored machine-specific handoff and recovery archives
+src/deskbuddy/       Desktop app, perception, kinematics, control and learning
+src/deskbuddy/ui/    3D workspace, camera alignment, tip selection and recording
+src/deskbuddy/trajectory/   Trajectory planners, collision checks and scene tracking
+tests/              Offline regression and simulation tests
+configs/            Public templates; machine configuration stays local
+scripts/            Setup, training, calibration and evaluation tools
+docs/               Guides, research notes, results and the success demo
+runs/               Ignored local datasets, checkpoints, recordings and runtime state
 ```
 
-[Documentation index](docs/README.md) · [Controller](docs/guides/controller.md) · [Architecture](docs/guides/architecture.md) · [Maintainer handoff](docs/MAINTAINER.md)
+[Documentation](docs/README.md) · [Controller guide](docs/guides/controller.md) · [Architecture](docs/guides/architecture.md) · [Maintainer handoff](docs/MAINTAINER.md)
 
 ## Development
 
 ```bash
-python -m pip install -e ".[dev,flow,simulation]"
-python -m pip install opencv-python
+python -m pip install -e ".[dev,flow,simulation]" opencv-python
 python -m ruff check src tests scripts
 python -m ruff format --check src tests scripts
 python -m pytest -q
 ```
 
-Tests do not require an attached arm. Optional-dependency and local-checkpoint tests can skip on a fresh checkout. Generated training data, downloaded weights, raw camera frames and machine calibrations are intentionally excluded; training commands and measured summaries are included.
+Tests run without an attached arm. Optional dependency and local-checkpoint tests may skip on a fresh checkout. Raw training data, weights, private calibration and camera snapshots stay out of Git; the selected public demo is included under `docs/assets/`.
 
-## License and attribution
+## License
 
-Original code and the bundled SO-101 model notices use [Apache-2.0](LICENSE). The optional Ultralytics detector has its own [AGPL-3.0 / Enterprise terms](https://www.ultralytics.com/license); this project's license does not override dependency terms. Detector weights are not bundled. See [third-party notices](THIRD_PARTY_NOTICES.md).
+Original code is [Apache-2.0](LICENSE). Bundled models and optional dependencies retain their respective terms; see [third-party notices](THIRD_PARTY_NOTICES.md).

@@ -12,6 +12,8 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from .kinematics import axis_rotation
+
 
 def origin_transform(element):
     transform = np.eye(4)
@@ -50,7 +52,26 @@ def bodies():
     return result, children, origin_transform(jaw.find("origin"))
 
 
+_PLANE_CACHE = {}
+
+
 def physical_plane(config):
+    bed = config.get("test_bed")
+    key = (
+        None if bed is None else repr(bed.get("corners_base_m")),
+        bool(config.get("assume_level_table")),
+        config.get("table_z_m"),
+    )
+    cached = _PLANE_CACHE.get(key)
+    if cached is None:
+        cached = _physical_plane(config)
+        if len(_PLANE_CACHE) > 32:
+            _PLANE_CACHE.clear()
+        _PLANE_CACHE[key] = cached
+    return cached[0].copy(), cached[1]
+
+
+def _physical_plane(config):
     from .grasp_geometry import table_normal
     from .test_bed import corners
 
@@ -68,7 +89,7 @@ def transformed_bodies(arm, q, include_jaw=True):
         t = t @ origin
         if bounds is not None:
             motion = np.eye(4)
-            motion[:3, :3] = Rotation.from_rotvec(axis * q[index]).as_matrix()
+            motion[:3, :3] = axis_rotation(axis, q[index])
             t = t @ motion
             index += 1
         child = children[name]

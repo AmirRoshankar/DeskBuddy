@@ -14,6 +14,25 @@ from scipy.spatial.transform import Rotation
 JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll")
 
 
+def axis_rotation(axis, angle):
+    """Rodrigues rotation matrix; same result as Rotation.from_rotvec, ~30x cheaper."""
+    axis = np.asarray(axis, float)
+    norm = np.sqrt(axis @ axis)
+    if norm < 1e-15:
+        return np.eye(3)
+    x, y, z = axis / norm
+    angle = float(angle) * norm
+    c, s = np.cos(angle), np.sin(angle)
+    v = 1 - c
+    return np.array(
+        [
+            [c + x * x * v, x * y * v - z * s, x * z * v + y * s],
+            [y * x * v + z * s, c + y * y * v, y * z * v - x * s],
+            [z * x * v - y * s, z * y * v + x * s, c + z * z * v],
+        ]
+    )
+
+
 class Arm:
     def __init__(self, limits_deg=None, tool_offset_m=None):
         self.tool_offset = np.asarray(
@@ -90,7 +109,7 @@ class Arm:
             t = t @ origin
             if bounds is not None:
                 motion = np.eye(4)
-                motion[:3, :3] = Rotation.from_rotvec(axis * q[i]).as_matrix()
+                motion[:3, :3] = axis_rotation(axis, q[i])
                 t = t @ motion
                 i += 1
             points.append(t[:3, 3].copy())
@@ -144,5 +163,31 @@ class Arm:
         solution = expand(result.x)
         error = np.linalg.norm(self.fk(solution) - target)
         if not result.success or error > tolerance:
-            raise ValueError(f"IK failed: endpoint error {error * 1000:.1f} mm")
+            # A tip behind the base can be reached by folding over the shoulder,
+            # without rotating pan toward the target azimuth. Try other posture
+            # branches only when the fast local solve fails.
+            candidates = np.random.default_rng(101).uniform(
+                self.lower, self.upper, (24 if target[0] < 0 else 0, 5)
+            )
+            for posture in candidates:
+                trial = least_squares(
+                    residual,
+                    np.clip(
+                        posture[free], self.lower[free] + 1e-8, self.upper[free] - 1e-8
+                    ),
+                    bounds=(self.lower[free], self.upper[free]),
+                    ftol=1e-10,
+                    xtol=1e-10,
+                    gtol=1e-10,
+                    max_nfev=120,
+                )
+                alternative = expand(trial.x)
+                gap = np.linalg.norm(self.fk(alternative) - target)
+                if gap < error:
+                    solution, error = alternative, gap
+                if trial.success and gap <= tolerance:
+                    return alternative
+            raise ValueError(
+                f"IK failed across posture branches: endpoint error {error * 1000:.1f} mm"
+            )
         return solution

@@ -27,36 +27,71 @@ def preview_scene(config, boxes):
     )
 
 
+_SHARED = {}
+_SHARED_LOCK = __import__("threading").Lock()
+
+
+def shared_suite(folder="runs/flowreach/trajectories-v1/models-v3"):
+    """One process-wide model set shared by overlays, routes and comparisons."""
+    with _SHARED_LOCK:
+        if folder not in _SHARED:
+            _SHARED[folder] = PlannerSuite(folder)
+        return _SHARED[folder]
+
+
 class PlannerSuite:
-    def __init__(self, folder="runs/flowreach/trajectories-v1/models-v3"):
+    """Loads only the live comparison models (MLP, iMF); FM loads on request."""
+
+    def __init__(
+        self, folder="runs/flowreach/trajectories-v1/models-v3", methods=("mlp", "imf")
+    ):
         torch.set_num_threads(1)
+        self.folder = folder
         self.models = {}
         self.checkpoints = {}
-        for name in ("mlp", "fm", "imf"):
-            cp = torch.load(
-                Path(folder) / (name + ".pt"), map_location="cpu", weights_only=True
-            )
-            if cp.get("task") != "cartesian_trajectory_2d":
-                raise ValueError("Wrong trajectory checkpoint")
-            model = (
-                Dense(18, width=cp["width"])
-                if name == "mlp"
-                else Field(
-                    cp["width"], auxiliary=cp.get("auxiliary_velocity_head", False)
-                )
-            )
-            model.load_state_dict(cp["state_dict"])
-            model.eval()
-            self.models[name], self.checkpoints[name] = model, cp
+        self._lock = __import__("threading").Lock()
+        for name in methods:
+            self._load(name)
+
+    def _load(self, name):
+        cp = torch.load(
+            Path(self.folder) / (name + ".pt"), map_location="cpu", weights_only=True
+        )
+        if cp.get("task") != "cartesian_trajectory_2d":
+            raise ValueError("Wrong trajectory checkpoint")
+        model = (
+            Dense(18, width=cp["width"])
+            if name == "mlp"
+            else Field(cp["width"], auxiliary=cp.get("auxiliary_velocity_head", False))
+        )
+        model.load_state_dict(cp["state_dict"])
+        model.eval()
         with torch.inference_mode():
-            for name, model in self.models.items():
-                sample(
-                    model,
-                    torch.zeros(1, 18),
-                    torch.zeros(1, 60),
-                    name,
-                    8 if name == "fm" else 1,
-                )
+            # Warm the kernels once so the first click is not a cold start.
+            sample(
+                model,
+                torch.zeros(1, 18),
+                torch.zeros(1, 60),
+                name,
+                8 if name == "fm" else 1,
+            )
+        self.models[name], self.checkpoints[name] = model, cp
+
+    def _ensure(self, names):
+        missing = [
+            n for n in names if n in ("mlp", "fm", "imf") and n not in self.models
+        ]
+        if not missing:
+            return
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            for name in missing:
+                self._load(name)
+            return
+        with lock:
+            for name in missing:
+                if name not in self.models:
+                    self._load(name)
 
     def compare(
         self,
@@ -71,6 +106,7 @@ class PlannerSuite:
         methods = ("mlp", "fm", "imf", "rrt") if methods is None else tuple(methods)
         if set(methods) - {"mlp", "fm", "imf", "rrt"}:
             raise ValueError("Unknown planner method")
+        self._ensure(methods)
         if candidates not in (1, 4):
             raise ValueError("Use one or four candidates")
         if len(scene.circles) + len(scene.boxes) > 2:

@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 
+from .elevated_alignment import check_elevated_tip as check_elevated_tip
 from .overlays import project
 from .paper_calibration import fit_paper
 
@@ -145,10 +146,43 @@ def calibrate_views(
 
     pp, sp = np.asarray(pp, float), np.asarray(sp, float)
 
+    if config.get("T_base_camera") is None or not config.get("calibration_verified"):
+        return calibrate_camera_pair(primary, secondary, pp, sp, strict=strict)
+
+    camera_pose = np.asarray(config["T_base_camera"], float)
+    refined = None
+    if config.get("assume_level_table") and config.get("level_camera_to_paper"):
+        from .paper_calibration import level_camera_pose
+
+        candidate, residual = level_camera_pose(
+            pp, intrinsics, camera_pose, config["table_z_m"]
+        )
+        # Only when the camera model itself explains the clicked corners.
+        if residual.max() <= 4:
+            tilt = np.degrees(
+                np.arccos(
+                    np.clip(
+                        (np.trace(candidate[:3, :3].T @ camera_pose[:3, :3]) - 1) / 2,
+                        -1,
+                        1,
+                    )
+                )
+            )
+            if tilt <= 10:
+                refined = dict(
+                    T_base_camera=candidate.tolist(),
+                    rotation_change_deg=float(tilt),
+                    position_change_m=float(
+                        np.linalg.norm(candidate[:3, 3] - camera_pose[:3, 3])
+                    ),
+                    corner_residual_px=residual.tolist(),
+                )
+                camera_pose = candidate
+
     bed = fit_paper(
         pp,
         intrinsics,
-        config["T_base_camera"],
+        camera_pose,
         depth,
         strict=strict,
         table_z=config["table_z_m"] if config.get("assume_level_table") else None,
@@ -196,6 +230,7 @@ def calibrate_views(
         metric_3d_validated=False,
         intrinsics_assumptions="square pixels, centered principal point, zero lens distortion",
         primary_bed=bed,
+        primary_camera_refinement=refined,
     )
 
     if k is not None:
@@ -242,9 +277,64 @@ def calibrate_views(
             result, primary, secondary, depth, intrinsics, config
         )
 
-    result["primary_signature"] = primary_signature({**config, "test_bed": bed})
+    # Sign the pose actually saved (the A4-refined one when that option is on).
+    result["primary_signature"] = primary_signature(
+        {
+            **config,
+            "T_base_camera": refined["T_base_camera"]
+            if refined
+            else config["T_base_camera"],
+            "test_bed": bed,
+        }
+    )
 
     return result
+
+
+def calibrate_camera_pair(primary, secondary, pp, sp, *, strict=True):
+    """Align images via metric A4 coordinates without asserting robot-base pose."""
+    import cv2
+
+    pp, sp = np.asarray(pp, float), np.asarray(sp, float)
+    for points in (pp, sp):
+        if (
+            points.shape != (4, 2)
+            or not np.isfinite(points).all()
+            or not cv2.isContourConvex(points.astype(np.float32))
+            or abs(cv2.contourArea(points.astype(np.float32))) < 500
+        ):
+            raise ValueError(
+                "Select the same four paper corners in both views, in order"
+            )
+    paper = np.float32([[0, 0], [0.210, 0], [0.210, 0.297], [0, 0.297]])
+    primary_h = cv2.getPerspectiveTransform(paper, pp.astype(np.float32))
+    secondary_h = cv2.getPerspectiveTransform(paper, sp.astype(np.float32))
+    blue = blue_agreement(primary, secondary, pp, sp)
+    warnings = [
+        "Paper-plane alignment only; robot-base pose and elevated 3D are not calibrated"
+    ]
+    if blue is not None and blue < 0.25:
+        if strict:
+            raise ValueError("Blue markings do not align; check corner correspondence")
+        warnings.append("Blue markings do not align; review corner correspondence")
+    return dict(
+        schema=1,
+        frame="paper",
+        camera_only=True,
+        primary_image_size=[primary.shape[1], primary.shape[0]],
+        image_size=[secondary.shape[1], secondary.shape[0]],
+        primary_pixels=pp.tolist(),
+        secondary_pixels=sp.tolist(),
+        H_primary_paper=primary_h.tolist(),
+        H_secondary_paper=secondary_h.tolist(),
+        H_primary_to_secondary=(secondary_h @ np.linalg.inv(primary_h)).tolist(),
+        blue_agreement=blue,
+        calibrated_unix_s=time.time(),
+        validation_warnings=warnings,
+        validation_passed=blue is None or blue >= 0.25,
+        metric_3d_validated=False,
+        pose_validation="camera-to-camera paper-plane alignment; robot base not calibrated",
+    )
 
 
 def validate_with_depth_features(result, primary, secondary, depth, intrinsics, config):
@@ -437,10 +527,23 @@ def calibration_current(config, size=None):
 
     calibration = config.get("secondary_camera_calibration")
 
+    if not calibration or (
+        size is not None and list(size) != calibration.get("image_size")
+    ):
+        return False
+    if calibration.get("primary_signature") == primary_signature(config):
+        return True
+    # Alignments saved with "Correct RealSense tilt from A4" before this fix
+    # were signed with the unrefined pose; accept them when the saved pose and
+    # A4 are exactly the ones that alignment produced.
+    refinement = calibration.get("primary_camera_refinement") or {}
     return bool(
-        calibration
-        and calibration.get("primary_signature") == primary_signature(config)
-        and (size is None or list(size) == calibration.get("image_size"))
+        refinement.get("T_base_camera") is not None
+        and np.allclose(
+            np.asarray(refinement["T_base_camera"], float),
+            np.asarray(config.get("T_base_camera") or np.zeros((4, 4)), float),
+        )
+        and calibration.get("primary_bed") == config.get("test_bed")
     )
 
 

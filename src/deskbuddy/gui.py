@@ -106,6 +106,8 @@ def run(config, live=False, robot_state=False, config_path=None):
         initial_status = "MF retired · iMF selected. " + initial_status
 
     def request_stop():
+        if state.get("auto_calibration"):
+            state["auto_calibration"].stop()
         state.pop("auto_grab_token", None)
         path = Path("runs/control/stop")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,6 +122,8 @@ def run(config, live=False, robot_state=False, config_path=None):
         on_go=lambda: go(),
         on_stop=request_stop,
         on_recalibrate=lambda: recalibrate(),
+        on_auto_calibrate=lambda: start_auto_calibration(),
+        on_select_tip=lambda: select_tip_feature(),
         hover_m=config["hover_m"],
         on_hover=lambda value: change_hover(value),
         planner_mode=config.get("planner_mode", "numerical"),
@@ -139,11 +143,39 @@ def run(config, live=False, robot_state=False, config_path=None):
         on_discard_zone=lambda: begin_discard_zone(),
         task_mode=config.get("task_mode", "reach"),
         on_imf_grasp=lambda: imf_grasp(),
+        on_hole_grasp=lambda: discard_can(use_hole=True),
+        on_record=lambda: toggle_recording(),
         on_home=lambda: home(),
+        on_set_home=lambda: set_home(),
         on_calibrate_views=lambda: calibrate_cameras(),
     )
     left, right, depth_view = dashboard.color, dashboard.diagram, dashboard.depth
     webcam_view = dashboard.webcam
+    from .ui.recorder import UiRecorder
+
+    recorder = UiRecorder(root)
+
+    def recording_tick():
+        if not recorder.recording:
+            return
+        seconds = int(recorder.elapsed_s())
+        dashboard.record.configure(text=f"■ Stop  {seconds // 60}:{seconds % 60:02d}")
+        root.after(500, recording_tick)
+
+    def toggle_recording():
+        if recorder.recording:
+            path = recorder.stop()
+            dashboard.record.configure(text="● Record")
+            status.set(
+                f"Recording saved: {path}"
+                if recorder.error is None
+                else f"Recording stopped with an error: {recorder.error}"
+            )
+            return
+        path = recorder.start()
+        status.set(f"Recording the whole window to {path} · press Stop to save")
+        recording_tick()
+
     zoom, gray_zoom = dashboard.zoom, dashboard.depth_zoom
     status, fault_status, cursor_info = (
         dashboard.status,
@@ -170,6 +202,7 @@ def run(config, live=False, robot_state=False, config_path=None):
         "last_state_read": 0.0,
         "history": [],
         "tool_points": [],
+        "webcam_points": [],
         "session_id": str(uuid.uuid4()),
         "depth_history": [],
         "cursor": None,
@@ -218,6 +251,16 @@ def run(config, live=False, robot_state=False, config_path=None):
             if secondary:
                 from .multiview import calibration_current, secondary_surface_point
 
+                if calibration_mode:
+                    if calibration_flow.stage == "capture":
+                        capture_webcam_tip(pixel)
+                        return "break"
+                    if calibration_flow.stage == "paper_webcam":
+                        calibration_flow.capture_paper_webcam(pixel)
+                        return "break"
+                    raise ValueError(
+                        "follow the current calibration step in the bar below"
+                    )
                 if not calibration_current(config):
                     raise ValueError("Calibrate views before selecting from the webcam")
                 point = secondary_surface_point(
@@ -242,24 +285,136 @@ def run(config, live=False, robot_state=False, config_path=None):
             status.set(f"{'Webcam' if secondary else 'Camera'} target rejected: {exc}")
         return "break"
 
+    def capture_webcam_tip(pixel):
+        """RGB-only arm point: jaw-tip click in the webcam + encoder FK (no depth)."""
+        from .rgb_hand_eye import fit_camera
+
+        frame = state.get("secondary_frame")
+        if frame is None or state.get("camera_stale"):
+            raise ValueError("Wait for a fresh webcam frame")
+        motor = state["motor"]
+        if motor is None or time.monotonic() - state["last_state_read"] > 0.5:
+            raise ValueError("Wait for joint readings")
+        if any(motor["torque_enabled"].values()):
+            raise ValueError(
+                "Manual capture requires every motor's torque to be disabled"
+            )
+        if motor["gripper_percent"] > 8:
+            raise ValueError(
+                "Gently close the gripper jaws by hand before clicking their meeting point"
+            )
+        recent = [
+            item[1] for item in state["history"] if time.monotonic() - item[0] < 0.7
+        ]
+        if len(recent) < 3 or np.rad2deg(np.ptp(recent, axis=0)).max() > 0.7:
+            raise ValueError("Hold the arm still for one second, then click again")
+        q_capture = np.array(motor["q_model_rad"])
+        if (q_capture < arm.lower).any() or (q_capture > arm.upper).any():
+            raise ValueError(
+                "Move the joints away from their end stops into a comfortable middle pose"
+            )
+        base = arm.fk(q_capture)
+        if any(
+            np.linalg.norm(base - r["base_point_model_m"]) < 0.025
+            for r in state["webcam_points"]
+        ):
+            raise ValueError(
+                "Choose a new tool position at least 2.5 cm from earlier samples"
+            )
+        image = frame[0]
+        count = len(state["webcam_points"]) + 1
+        capture_dir = Path("runs/calibration") / state["session_id"]
+        capture_dir.mkdir(parents=True, exist_ok=True)
+        marked = Image.fromarray(image)
+        mark = ImageDraw.Draw(marked)
+        x, y = pixel
+        mark.ellipse((x - 9, y - 9, x + 9, y + 9), outline="#ff4060", width=2)
+        mark.text((10, 10), f"Webcam point {count}", fill="#ff4060")
+        rgb_path = capture_dir / f"webcam_point_{count:02d}.png"
+        marked.save(rgb_path)
+        record = dict(
+            session_id=state["session_id"],
+            unix_time_s=time.time(),
+            view="webcam",
+            pixel=[float(x), float(y)],
+            image_size=[image.shape[1], image.shape[0]],
+            base_point_model_m=base.tolist(),
+            q_model_rad=q_capture.tolist(),
+            gripper_percent=motor["gripper_percent"],
+            rgb_file=str(rgb_path),
+        )
+        with Path("runs/webcam_tool_points.jsonl").open(
+            "a", encoding="utf-8"
+        ) as stream:
+            stream.write(json.dumps(record) + "\n")
+        state["webcam_points"].append(record)
+        count = len(state["webcam_points"])
+        if count < 12:
+            calibration_flow.capture_step()
+            status.set(
+                f"Webcam arm point {count}/12 captured. Move to a new position and height, "
+                "hold still and click the jaw tip in the webcam again."
+            )
+            return
+        try:
+            fit = fit_camera(state["webcam_points"][:12], record["image_size"])
+        except ValueError as exc:
+            calibration_flow.bar.step(
+                f"Webcam fit needs new points: {exc}", "Restart arm points", recalibrate
+            )
+            return
+        from .calibration_session import write_json
+
+        fit["image_size"] = record["image_size"]
+        write_json(capture_dir / "webcam_fit.json", fit)
+        calibration_flow.webcam_assessment(fit)
+
     webcam_view.bind("<Button-1>", lambda event: select_camera(event, True))
 
     def calibrate_cameras():
         if state["motion_job"] is not None or state["robot_io_paused"]:
             status.set("Finish the motor operation before aligning camera views.")
             return
-        if (
-            state["frame"] is None
-            or state["secondary_frame"] is None
-            or not config["calibration_verified"]
-        ):
-            status.set("Wait for both cameras and a verified RealSense calibration.")
+        if state["frame"] is None or state["secondary_frame"] is None:
+            status.set("Wait for fresh images from both cameras.")
             return
-        from .ui.camera_alignment import CameraAlignment
+        existing = state.get("camera_alignment_window")
+        if existing is not None and not existing.closed:
+            existing.window.deiconify()
+            existing.window.lift()
+            existing.window.focus_force()
+            return
+        try:
+            from .ui.camera_alignment import CameraAlignment
+        except Exception as exc:
+            status.set(f"Cannot open camera alignment: {type(exc).__name__}: {exc}")
+            return
 
         rgb, depth, intrinsics = state["frame"]
 
         def save_alignment(result):
+            if result.get("camera_only"):
+                config["camera_pair_alignment"] = result
+                if config_path:
+                    from .calibration_session import write_json
+
+                    write_json(config_path, config)
+                status.set(
+                    "Camera alignment saved on A4. Robot-base calibration is still needed for motion."
+                )
+                return
+            refinement = result.get("primary_camera_refinement")
+            if refinement:
+                # Keep the previous pose so the change can be undone by hand.
+                backup = Path("runs/calibration-backups")
+                backup.mkdir(parents=True, exist_ok=True)
+                (
+                    backup / f"T_base_camera-{time.strftime('%Y%m%d-%H%M%S')}.json"
+                ).write_text(
+                    json.dumps(dict(T_base_camera=config["T_base_camera"]), indent=2),
+                    encoding="utf-8",
+                )
+                config["T_base_camera"] = refinement["T_base_camera"]
             config["test_bed"] = result["primary_bed"]
             config["secondary_camera_calibration"] = result
             if config_path:
@@ -269,6 +424,12 @@ def run(config, live=False, robot_state=False, config_path=None):
             change_hover(config["hover_m"])
             status.set(
                 "Alignment saved · "
+                + (
+                    f"RealSense tilt corrected {refinement['rotation_change_deg']:.1f}° "
+                    "from the A4 · "
+                    if refinement
+                    else ""
+                )
                 + result.get("pose_validation", "table-plane support")
             )
 
@@ -282,23 +443,73 @@ def run(config, live=False, robot_state=False, config_path=None):
             return (
                 state["frame"][0].copy(),
                 state["secondary_frame"][0].copy(),
-                state["frame"][1].copy(),
+                None if state["frame"][1] is None else state["frame"][1].copy(),
             )
 
-        CameraAlignment(
-            root,
-            rgb.copy(),
-            state["secondary_frame"][0].copy(),
-            depth.copy(),
-            intrinsics,
-            copy.deepcopy(config),
-            save_alignment,
-            frames_provider=frames_provider,
-        )
+        try:
+            state["camera_alignment_window"] = CameraAlignment(
+                root,
+                rgb.copy(),
+                state["secondary_frame"][0].copy(),
+                None if depth is None else depth.copy(),
+                intrinsics,
+                copy.deepcopy(config),
+                save_alignment,
+                frames_provider=frames_provider,
+            )
+            status.set(
+                "Camera alignment opened. Select matching corners in both views."
+            )
+        except Exception as exc:
+            import traceback
+
+            traceback.print_exc()
+            status.set(f"Cannot open camera alignment: {type(exc).__name__}: {exc}")
+
+    def current_hole():
+        """Pour-hole centre from the active plan, else the latest detection."""
+        plan = state.get("plan")
+        for info in (plan.planner_info or []) if plan is not None else []:
+            proposal = (info.get("can_transfer") or {}).get("model_proposal") or {}
+            if proposal.get("hole_center_m"):
+                return proposal["hole_center_m"]
+        opening = state.get("can_opening")
+        return None if opening is None else opening["center_m"]
 
     def scene_snapshot():
+        from .can_discard import HOLE_TIP_DEPTH_M
+
         plan = state.get("plan")
+        objective = None
+        transfer = next(
+            (
+                i["can_transfer"]
+                for i in (plan.planner_info or [] if plan is not None else [])
+                if "can_transfer" in i
+            ),
+            None,
+        )
+        proposal = (transfer or {}).get("model_proposal") or {}
+        if proposal.get("hole_center_m"):
+            objective = dict(
+                point_m=proposal["hole_center_m"],
+                depth_m=proposal["hole_center_m"][2]
+                - (
+                    transfer["can"]["center_m"][2]
+                    + transfer["can"]["height_m"]
+                    - HOLE_TIP_DEPTH_M
+                ),
+                label="Pour hole · objective",
+            )
+        elif state.get("can_opening") is not None:
+            objective = dict(
+                point_m=state["can_opening"]["center_m"],
+                depth_m=0.0,
+                label="Pour hole (detected)",
+            )
         return dict(
+            objective=objective,
+            target_label="Drop" if transfer else "Target",
             arm=arm,
             q=np.array(state["q"]).copy(),
             config=config,
@@ -330,6 +541,40 @@ def run(config, live=False, robot_state=False, config_path=None):
             status.set("Collision setting applies to the next preview.")
             return
         change_hover(config["hover_m"])
+
+    def set_home():
+        if state["motion_job"] is not None or state["robot_io_paused"]:
+            status.set(
+                "Cannot save Home while another operation owns the motor port; wait for feedback to resume."
+            )
+            return
+        motor = state.get("motor")
+        if motor is None or time.monotonic() - state["last_state_read"] > 0.5:
+            status.set("Cannot save Home: wait for fresh joint readings.")
+            return
+        pose = np.asarray(motor.get("q_model_rad", []), float)
+        if pose.shape != (5,) or not np.isfinite(pose).all():
+            status.set("Cannot save Home: invalid joint readings.")
+            return
+        if (pose < arm.lower).any() or (pose > arm.upper).any():
+            status.set(arm.limit_error(pose, "Home pose"))
+            return
+        candidate = copy.deepcopy(config)
+        candidate["home_pose_deg"] = np.rad2deg(pose).tolist()
+        try:
+            if config_path:
+                from .calibration_session import write_json
+
+                write_json(config_path, candidate)
+            config.update(candidate)
+            status.set(
+                "Home saved [pan, lift, elbow, wrist, roll]: "
+                + ", ".join(f"{angle:.1f} deg" for angle in candidate["home_pose_deg"])
+                + (" (saved to disk)." if config_path else " (session only).")
+                + " No movement commanded."
+            )
+        except OSError as exc:
+            status.set(f"Home was not saved: {exc}")
 
     def home():
         nonlocal route_version, route_future
@@ -438,7 +683,7 @@ def run(config, live=False, robot_state=False, config_path=None):
             state["discard_points"] = []
             status.set(f"Discard zone: {exc}; select four corners again")
 
-    def discard_can(use_imf=False):
+    def discard_can(use_imf=False, use_hole=False):
         nonlocal route_version, route_future
         if not passive or state["motion_job"] is not None or state["robot_io_paused"]:
             status.set("Wait for live motor feedback and an idle arm")
@@ -451,6 +696,7 @@ def run(config, live=False, robot_state=False, config_path=None):
             return
         from .can_discard import detect_can, learned_can_cycle, plan_can_cycle
 
+        state["can_opening"] = None
         try:
             report = state.get("obstacle_report") or {}
             if time.time() - report.get("detection_unix_s", 0) > 3:
@@ -485,6 +731,27 @@ def run(config, live=False, robot_state=False, config_path=None):
                     )
                 ] or boxes
             can = detect_can(boxes, config)
+            opening = None
+            if use_hole:
+                from .trajectory.can_opening import detect_webcam_opening
+
+                secondary = state.get("secondary_frame")
+                if secondary is None:
+                    raise ValueError("Need a webcam RGB frame to find the pour hole")
+                webcam_rgb = secondary[0] if isinstance(secondary, tuple) else secondary
+                opening = detect_webcam_opening(webcam_rgb, config, can)
+                state["can_opening"] = opening
+                gap = opening.get("lid_views_m", {}).get("disagreement_m")
+                status.set(
+                    f"Pour hole found ({opening['confidence']:.2f}); "
+                    f"lid centre corrected {np.linalg.norm(opening['lid_correction_m']) * 1000:.0f} mm"
+                    + (
+                        f" · cameras differ {gap * 1000:.0f} mm, using RealSense; "
+                        "jaw camera checks will correct"
+                        if gap is not None and gap > 0.02
+                        else ""
+                    )
+                )
         except ValueError as exc:
             status.set(str(exc))
             return
@@ -495,12 +762,19 @@ def run(config, live=False, robot_state=False, config_path=None):
         state["auto_grab_token"] = token
         cfg = copy.deepcopy(config)
         seed = np.array(state["q"]).copy()
-        route_future = route_executor.submit(
-            learned_can_cycle if use_imf else plan_can_cycle, arm, seed, cfg, can
-        )
+        if use_hole:
+            from .can_discard import hole_can_cycle
+
+            route_future = route_executor.submit(
+                hole_can_cycle, arm, seed, cfg, can, opening
+            )
+        else:
+            route_future = route_executor.submit(
+                learned_can_cycle if use_imf else plan_can_cycle, arm, seed, cfg, can
+            )
         status.set(
             "Planning "
-            + ("iMF " if use_imf else "")
+            + ("pour-hole " if use_hole else "iMF " if use_imf else "")
             + "can pick/lift/drop · Stop cancels before execution"
         )
 
@@ -589,6 +863,8 @@ def run(config, live=False, robot_state=False, config_path=None):
 
     def toggle_disabled():
         state.pop("auto_grab_token", None)
+        if state.get("auto_calibration"):
+            state["auto_calibration"].stop()
         if state.get("release_pending"):
             status.set("Torque release in progress · keep arm supported")
             return
@@ -648,6 +924,62 @@ def run(config, live=False, robot_state=False, config_path=None):
         if state.get("hold_pending_clear"):
             hold_control.finish()
 
+    def cancel_recalibration():
+        """Restore the camera/table calibration saved when Recalibrate began.
+
+        Calibration data only: torque/hold state is unchanged, so if the arm
+        was released for hand-guiding it stays released until Enable.
+        """
+        from tkinter import messagebox
+
+        if state.get("calibration_job") is not None:
+            status.set("Wait for the current motor check to finish.")
+            return
+        backup = Path("runs/calibration_before_reset.json")
+        try:
+            previous = json.loads(backup.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            status.set("No saved previous calibration to restore.")
+            return
+        if not previous.get("T_base_camera") or not previous.get("test_bed"):
+            status.set(
+                "The saved previous calibration is incomplete; finish Recalibrate."
+            )
+            return
+        if not messagebox.askyesno(
+            "Restore previous calibration",
+            "Discard this recalibration and restore the previous camera and A4 "
+            "calibration? Motor torque is not changed: if the arm is released, "
+            "support it and press Enable afterwards.",
+            parent=root,
+        ):
+            return
+        for key in (
+            "T_base_camera",
+            "test_bed",
+            "tool_offset_m",
+            "calibration_verified",
+        ):
+            if key in previous:
+                config[key] = previous[key]
+        if config_path:
+            from .calibration_session import write_json
+
+            write_json(config_path, config)
+        refresh_arm_model()
+        calibration_flow.stage = None
+        calibration_flow.bar.grid_remove()
+        calibration_finished()
+        status.set(
+            "Previous calibration restored. Torque unchanged"
+            + (
+                " · arm released: support it and press Enable."
+                if state.get("motor")
+                and not all(state["motor"]["torque_enabled"].values())
+                else "."
+            )
+        )
+
     calibration_flow = CalibrationFlow(
         root,
         config,
@@ -658,9 +990,158 @@ def run(config, live=False, robot_state=False, config_path=None):
         calibration_finished,
         lambda: recalibrate(),
     )
+    calibration_flow.bar.on_cancel = cancel_recalibration
     from .hold_control import HoldControl
 
     hold_control = HoldControl(root, config, state, status, calibration_flow.bar)
+
+    def open_manual_rgb_capture():
+        from .calibration_session import write_json
+        from .rgb_hand_eye import fit_camera
+        from .ui.paired_calibration import PairedCalibration
+
+        def frames():
+            if state.get("frame") is None or state.get("secondary_frame") is None:
+                return None
+            return state["frame"][0].copy(), state["secondary_frame"][0].copy()
+
+        def capture_state():
+            motor = state.get("motor")
+            if not motor or time.monotonic() - state["last_state_read"] > 0.5:
+                raise ValueError("Wait for fresh joint readings")
+            if any(motor["torque_enabled"].values()):
+                raise ValueError(
+                    "Support the arm and release hold using the calibration controls first"
+                )
+            if motor["gripper_percent"] > 8:
+                raise ValueError(
+                    "Close the jaws by hand before selecting their meeting point"
+                )
+            recent = [
+                item[1] for item in state["history"] if time.monotonic() - item[0] < 0.7
+            ]
+            if len(recent) < 3 or np.rad2deg(np.ptp(recent, axis=0)).max() > 0.7:
+                raise ValueError("Hold the arm still for one second")
+            q_sample = np.array(motor["q_model_rad"])
+            base = arm.fk(q_sample)
+            if any(
+                np.linalg.norm(base - np.asarray(r["base_point_model_m"])) < 0.025
+                for r in state["webcam_points"]
+            ):
+                raise ValueError("Move the tip at least 2.5 cm from earlier poses")
+            return dict(
+                q_model_rad=q_sample.tolist(),
+                base_point_model_m=base.tolist(),
+                gripper_percent=motor["gripper_percent"],
+            )
+
+        primary_records = []
+
+        def save_pair(pixels, context, images):
+            records = [
+                dict(
+                    context,
+                    pixel=list(pixel),
+                    image_size=[image.shape[1], image.shape[0]],
+                    session_id=state["session_id"],
+                    unix_time_s=time.time(),
+                    view=view,
+                )
+                for pixel, image, view in zip(pixels, images, ("realsense", "webcam"))
+            ]
+            primary_records.append(records[0])
+            state["webcam_points"].append(records[1])
+            directory = Path("runs/calibration") / state["session_id"]
+            write_json(
+                directory / "paired_rgb_points.json",
+                dict(primary=primary_records, secondary=state["webcam_points"]),
+            )
+            count = len(primary_records)
+            status.set(f"Manual calibration: {count}/8 pairs ({count * 2}/16 clicks)")
+            if count == 8:
+                try:
+                    fits = [
+                        fit_camera(rows, record["image_size"])
+                        for rows, record in (
+                            (primary_records, records[0]),
+                            (state["webcam_points"], records[1]),
+                        )
+                    ]
+                    for fit, record in zip(fits, records):
+                        fit["image_size"] = record["image_size"]
+                    write_json(
+                        directory / "paired_rgb_fits.json",
+                        dict(primary=fits[0], secondary=fits[1]),
+                    )
+                    calibration_flow.webcam_assessment(fits[1])
+                    status.set(
+                        "8 RGB tip pairs captured; camera fit results ready for review."
+                    )
+                except ValueError as exc:
+                    calibration_flow.bar.step(
+                        f"Paired camera fit needs new points: {exc}",
+                        "Restart arm points",
+                        recalibrate,
+                    )
+                    status.set(f"8 pairs captured; fit failed: {exc}")
+
+        if frames() is None:
+            status.set("Connect both cameras before paired manual calibration.")
+            return
+        state["webcam_points"] = []
+        state["manual_rgb_window"] = PairedCalibration(
+            root, frames, capture_state, save_pair
+        )
+
+    calibration_flow.on_manual_capture = open_manual_rgb_capture
+
+    def select_tip_feature():
+        from .point_tracking import PointTracker
+        from .ui.tip_picker import TipPicker
+
+        if state.get("motion_job") is not None:
+            status.set("Stop motion before selecting the fixed jaw tip.")
+            return
+        if state.get("secondary_frame") is None:
+            status.set("Wait for the webcam image.")
+            return
+
+        def selected(image, pixel, stamp):
+            state["tip_tracker"] = PointTracker(image, pixel, stamp)
+            state["tip_tracking"] = state["tip_tracker"].result()
+            status.set(
+                "Fixed jaw tip selected. Tracking uses image motion, not orange colour. Small checked probes run at the next can pregrasp."
+            )
+
+        TipPicker(root, lambda: state.get("secondary_frame"), selected)
+
+    def start_auto_calibration():
+        from .ui.auto_calibration import AutoCalibration
+
+        if (
+            state.get("calibration_job") is not None
+            or state.get("motion_job") is not None
+        ):
+            status.set(
+                "Wait for the current motor operation before automatic calibration."
+            )
+            return
+        # Switching from manual capture must not restore an older transform or
+        # require completing the very calibration the automatic routine replaces.
+        calibration_flow.stage = None
+        calibration_flow.bar.grid_remove()
+        manual_window = state.get("manual_rgb_window")
+        if manual_window is not None and not manual_window.closed:
+            manual_window.close()
+        try:
+            operation = AutoCalibration(
+                root, config, state, arm, status, launch, route_executor
+            )
+            state["auto_calibration"] = operation
+            operation.start()
+        except (ValueError, RuntimeError, OSError) as exc:
+            status.set(f"Automatic calibration unavailable: {exc}")
+
     comparison_window = None
 
     def open_comparison():
@@ -755,6 +1236,7 @@ def run(config, live=False, robot_state=False, config_path=None):
                 surface_point_m=None,
                 visual_check=None,
                 tool_points=[],
+                webcam_points=[],
                 session_id=str(uuid.uuid4()),
                 selection_executed=False,
                 calibration_report=None,
@@ -818,6 +1300,7 @@ def run(config, live=False, robot_state=False, config_path=None):
             snapshot["pose_source"],
             repr(config.get("discard_zone")),
             repr(state.get("discard_points")),
+            repr(state.get("can_opening")),
             tuple(config["workspace_min_m"]),
             tuple(config["workspace_max_m"]),
         )
@@ -884,11 +1367,90 @@ def run(config, live=False, robot_state=False, config_path=None):
         except (ValueError, RuntimeError) as exc:
             status.set(f"3D target rejected: {exc}")
 
+    def scene_handle(phase, event):
+        """Drag workspace bounds in the 3D wireframe view (no robot motion)."""
+        from .ui.scene_inspector import bounds_handle_at, drag_bounds
+
+        size = (max(160, right.winfo_width()), max(120, right.winfo_height()))
+        if phase == "press":
+            if (
+                not config.get("show_workspace", True)
+                or calibration_flow.stage is not None
+                or state["motion_job"] is not None
+                or state["robot_io_paused"]
+            ):
+                return False
+            handle = bounds_handle_at(
+                scene_snapshot(), scene_nav.view, size, (event.x, event.y)
+            )
+            if handle is None:
+                return False
+            state["scene_bounds_drag"] = (
+                copy.deepcopy(config),
+                handle,
+                (event.x, event.y),
+            )
+            scene_nav.view.freeze_framing = True
+            state["plan"] = None
+            if go_button:
+                go_button.configure(state="disabled")
+            right.configure(cursor="fleur")
+            status.set(
+                f"Drag {handle[0]} · release to save · Esc to cancel. No robot motion."
+            )
+            return True
+        drag = state.get("scene_bounds_drag")
+        if drag is None:
+            return False
+        original, handle, press = drag
+        if phase == "drag":
+            try:
+                low, high = drag_bounds(
+                    scene_snapshot(),
+                    scene_nav.view,
+                    size,
+                    handle,
+                    press,
+                    (event.x, event.y),
+                    original,
+                )
+                config.update(workspace_min_m=low, workspace_max_m=high)
+                lo, hi = np.asarray(low), np.asarray(high)
+                status.set(
+                    f"Bounds {np.round(lo * 100, 1)} → {np.round(hi * 100, 1)} cm"
+                )
+                show(right, diagram(state["q"], plan=None))
+            except ValueError as exc:
+                status.set(str(exc))
+            return True
+        state.pop("scene_bounds_drag", None)
+        scene_nav.view.freeze_framing = False
+        right.configure(cursor="")
+        if np.linalg.norm(np.asarray([event.x, event.y]) - press) < 4:
+            # A click near a handle is still a target selection. Only an
+            # actual drag edits bounds, especially in a compact viewport.
+            config.update(original)
+            pick_scene(event)
+            return True
+        try:
+            if config_path:
+                from .calibration_session import write_json
+
+                write_json(config_path, config)
+            state["surface_point_m"] = None
+            state["selected_pixel"] = None
+            status.set("Bounds saved. Select a fresh target; Go starts motion.")
+        except OSError as exc:
+            config.update(original)
+            status.set(f"Could not save bounds; edit reverted: {exc}")
+        return True
+
     scene_nav = SceneNavigation(
         right,
         lambda: show(right, diagram(state["q"], plan=state.get("plan"))),
         on_pick=pick_scene,
         on_hover=lambda event: wheel(event),
+        on_handle=scene_handle,
     )
 
     def animate(index=0):
@@ -1110,7 +1672,12 @@ def run(config, live=False, robot_state=False, config_path=None):
         else:
             root.destroy()
 
-    root.protocol("WM_DELETE_WINDOW", close_window)
+    def close_with_recording():
+        if recorder.recording:
+            recorder.stop()
+        close_window()
+
+    root.protocol("WM_DELETE_WINDOW", close_with_recording)
 
     def change_grab_mode(value):
         config["click_and_grab"] = bool(value)
@@ -1194,16 +1761,19 @@ def run(config, live=False, robot_state=False, config_path=None):
         def compare_paths():
             if version != route_version:
                 return []
-            return overlay_planner.compare(
-                arm,
-                overlay_seed,
-                target.copy(),
-                overlay_cfg,
-                overlay_boxes,
-                overlay_cfg["trajectory_candidates"],
-                (state.get("obstacle_report") or {}).get("scene_revision", 0),
-                on_update=overlay_updates.put,
-            )
+            from .trajectory.cancel import planning_scope
+
+            with planning_scope(lambda: version != route_version):
+                return overlay_planner.compare(
+                    arm,
+                    overlay_seed,
+                    target.copy(),
+                    overlay_cfg,
+                    overlay_boxes,
+                    overlay_cfg["trajectory_candidates"],
+                    (state.get("obstacle_report") or {}).get("scene_revision", 0),
+                    on_update=overlay_updates.put,
+                )
 
         future_overlays = overlay_executor.submit(compare_paths)
         state["overlay_future"] = future_overlays
@@ -1258,18 +1828,21 @@ def run(config, live=False, robot_state=False, config_path=None):
             revision = report.get("scene_revision", 0)
 
             def compute_preview():
-                return with_grasp_pose(
-                    route_planner.plan(
-                        arm,
-                        captured_seed,
-                        target.copy(),
-                        captured_config,
-                        captured_boxes,
-                        method,
-                        count,
-                        revision,
+                from .trajectory.cancel import planning_scope
+
+                with planning_scope(lambda: version != route_version):
+                    return with_grasp_pose(
+                        route_planner.plan(
+                            arm,
+                            captured_seed,
+                            target.copy(),
+                            captured_config,
+                            captured_boxes,
+                            method,
+                            count,
+                            revision,
+                        )
                     )
-                )
 
             future = route_executor.submit(compute_preview)
             route_future = future
@@ -1498,6 +2071,9 @@ def run(config, live=False, robot_state=False, config_path=None):
                 if calibration_flow.stage == "paper":
                     calibration_flow.capture_paper((event.x, event.y))
                     return
+                if calibration_flow.stage == "paper_webcam":
+                    status.set("Click the four A4 corners in the webcam view first.")
+                    return
                 if calibration_flow.stage in ("release", "hold", "clear"):
                     status.set(
                         "Complete the current calibration step below the camera views."
@@ -1617,6 +2193,7 @@ def run(config, live=False, robot_state=False, config_path=None):
                                 "camera_point_m": p_camera.tolist(),
                                 "camera_serial": config["camera_serial"],
                                 "motor_state": state["motor"],
+                                "tip_tracking": state.get("tip_tracking"),
                             }
                         )
                         + "\n"
@@ -1654,6 +2231,19 @@ def run(config, live=False, robot_state=False, config_path=None):
                 rgb, depth, intrinsics = state["frame"]
                 if webcam is not None:
                     state["secondary_frame"] = webcam.read()
+                    if (
+                        state.get("tip_tracker") is not None
+                        and state["secondary_frame"] is not None
+                    ):
+                        webcam_image, webcam_stamp = state["secondary_frame"]
+                        was_tracked = (state.get("tip_tracking") or {}).get("valid")
+                        state["tip_tracking"] = state["tip_tracker"].update(
+                            webcam_image, webcam_stamp
+                        )
+                        if was_tracked and not state["tip_tracking"]["valid"]:
+                            status.set(
+                                "Webcam tip tracking lost. Select tip again; no colour-based replacement was chosen."
+                            )
                 if passive:
                     paused = Path("runs/control/pause_robot").exists()
                     if paused and not state["robot_io_paused"]:
@@ -1705,6 +2295,11 @@ def run(config, live=False, robot_state=False, config_path=None):
                             if state["secondary_frame"] is not None
                             else ()
                         )
+                        planning = any(
+                            future is not None and not future.done()
+                            for future in (state.get("overlay_future"), route_future)
+                        )
+                        object_detector.min_interval_s = 0.2 if planning else 0.05
                         result = object_detector.update(
                             rgb,
                             source,
@@ -1773,13 +2368,23 @@ def run(config, live=False, robot_state=False, config_path=None):
                             stroke_fill="#171719",
                         )
 
+                can_boxes = state.get("obstacle_boxes", [])
+                hole = current_hole()
+                if config["calibration_verified"]:
+                    from .overlays import draw_can_estimates, view_project
+
+                    draw_can_estimates(
+                        preview,
+                        lambda p: view_project(p, config, intrinsics),
+                        can_boxes,
+                        hole,
+                    )
                 if calibration_flow.stage is not None and calibration_flow.pixels:
                     draw = ImageDraw.Draw(preview)
                     pixels = calibration_flow.pixels
-                    if calibration_flow.paper is not None:
-                        outline = [
-                            tuple(p) for p in calibration_flow.paper["projected_pixels"]
-                        ]
+                    if len(pixels) == 4:
+                        # The sheet exactly where the corners were placed.
+                        outline = [tuple(p) for p in pixels]
                         draw.line(outline + [outline[0]], fill="#68f1a6", width=2)
                     for index, (x, y) in enumerate(pixels, 1):
                         draw.ellipse(
@@ -1793,10 +2398,10 @@ def run(config, live=False, robot_state=False, config_path=None):
                             stroke_fill="black",
                         )
                 if config["calibration_verified"]:
-                    from .overlays import project
+                    from .overlays import view_project
 
                     def projection(p):
-                        return project(p, config["T_base_camera"], intrinsics)
+                        return view_project(p, config, intrinsics)
 
                 show(left, preview)
                 depth_color, gray_depth = depth_images(
@@ -1816,6 +2421,12 @@ def run(config, live=False, robot_state=False, config_path=None):
                     )
                     draw_boxes(
                         depth_color, state.get("obstacle_boxes", []), config, intrinsics
+                    )
+                    draw_can_estimates(
+                        depth_color,
+                        lambda p: view_project(p, config, intrinsics),
+                        can_boxes,
+                        hole,
                     )
                 else:
                     ImageDraw.Draw(depth_color).text(
@@ -1887,6 +2498,33 @@ def run(config, live=False, robot_state=False, config_path=None):
                                     outline="#63D7C4",
                                     width=3,
                                 )
+                        if calibration.get("T_base_camera") and calibration.get(
+                            "intrinsics"
+                        ):
+                            from .overlays import draw_can_estimates
+                            from .test_bed import corners as paper_corners
+                            from .trajectory.rgb_can_perception import projector
+
+                            second_project = projector(
+                                calibration["T_base_camera"],
+                                calibration["intrinsics"],
+                                paper_corners(config, inset=False),
+                                calibration["secondary_pixels"],
+                            )
+
+                            def webcam_pixel(point):
+                                pixel = second_project(np.asarray(point, float)[None])[
+                                    0
+                                ]
+                                return (
+                                    tuple(float(v) for v in pixel)
+                                    if np.isfinite(pixel).all()
+                                    else None
+                                )
+
+                            draw_can_estimates(
+                                second_image, webcam_pixel, can_boxes, hole
+                            )
                         if not calibration.get("metric_3d_validated"):
                             second_draw.text(
                                 (12, 12),
@@ -1905,6 +2543,14 @@ def run(config, live=False, robot_state=False, config_path=None):
                         )
                     # Display the shared world-object IDs, not unmatched raw
                     # webcam rectangles that look like separate scene objects.
+                    tracked = state.get("tip_tracking") or {}
+                    if tracked.get("valid"):
+                        tx, ty = tracked["pixel"]
+                        drawing = ImageDraw.Draw(second_image)
+                        drawing.ellipse(
+                            (tx - 7, ty - 7, tx + 7, ty + 7), outline="#68f1a6", width=2
+                        )
+                        drawing.text((tx + 10, ty), "Tracked tip", fill="#68f1a6")
                     show(webcam_view, second_image)
                 elif webcam is not None:
                     webcam_view.configure(
@@ -2125,6 +2771,7 @@ def run(config, live=False, robot_state=False, config_path=None):
                     report = {
                         "unix_time_s": time.time(),
                         "motor_state": state["motor"],
+                        "tip_tracking": state.get("tip_tracking"),
                         "intrinsics": {
                             "fx": intrinsics.fx,
                             "fy": intrinsics.fy,
@@ -2222,7 +2869,6 @@ def run(config, live=False, robot_state=False, config_path=None):
                 state["refresh_job"] = root.after(33, refresh)
 
     def bounds_press(event):
-        from .overlays import project
         from .workspace_geometry import box_handles
 
         if not hasattr(event.widget, "viewport"):
@@ -2241,7 +2887,9 @@ def run(config, live=False, robot_state=False, config_path=None):
         intrinsics = state["frame"][2]
         hits = []
         for handle in box_handles(config):
-            projected = project(handle[1], config["T_base_camera"], intrinsics)
+            from .overlays import view_project
+
+            projected = view_project(handle[1], config, intrinsics)
             if projected is not None:
                 screen = viewport.from_camera(*projected)
                 distance = np.linalg.norm(np.asarray(screen) - [event.x, event.y])
@@ -2329,6 +2977,17 @@ def run(config, live=False, robot_state=False, config_path=None):
             ),
         )
     root.bind("<Escape>", lambda event: bounds_release(cancel=True), add="+")
+
+    def cancel_scene_bounds(event=None):
+        drag = state.pop("scene_bounds_drag", None)
+        if drag is not None:
+            config.update(drag[0])
+            scene_nav.view.freeze_framing = False
+            scene_nav.handle_drag = False
+            right.configure(cursor="")
+            status.set("Bounds edit cancelled.")
+
+    root.bind("<Escape>", cancel_scene_bounds, add="+")
     if passive:
 
         def cursor_move(event):

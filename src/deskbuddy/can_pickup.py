@@ -48,6 +48,62 @@ def match_motion(image, template, original, expected):
     return None
 
 
+def lid_ring(can, samples=120):
+    """Seam circle of the can lid in world coordinates."""
+    from .can_discard import lid_radius
+
+    center = np.asarray(can["center_m"], float)
+    angle = np.linspace(0, 2 * np.pi, samples, endpoint=False)
+    return np.c_[
+        center[0] + lid_radius(can) * np.cos(angle),
+        center[1] + lid_radius(can) * np.sin(angle),
+        np.full(samples, center[2] + float(can["height_m"])),
+    ]
+
+
+def lid_vote(image, on_table, lifted, search=4, sharp=1.6, margin=0.8):
+    """Is the lid edge where a held can would be, or still on the table?
+
+    Texture-free: the silver seam ellipse is a strong edge in both cameras.
+    Each hypothesis gets the best truncated median edge distance within a
+    few pixels (calibration slack); the median tolerates the jaw covering
+    part of the seam. Returns True (followed), False (stayed) or None.
+    """
+    on_table, lifted = np.asarray(on_table), np.asarray(lifted)
+    if np.linalg.norm(on_table.mean(0) - lifted.mean(0)) < 6:
+        return None
+    gray = cv2.cvtColor(np.asarray(image)[..., :3].astype(np.uint8), cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), 40, 110)
+    distance = cv2.distanceTransform((edges == 0).astype(np.uint8), cv2.DIST_L2, 3)
+    height, width = gray.shape
+
+    def cost(points):
+        best = None
+        for dx in range(-search, search + 1):
+            for dy in range(-search, search + 1):
+                p = np.int32(np.round(points + [dx, dy]))
+                inside = (
+                    (p[:, 0] >= 0)
+                    & (p[:, 0] < width)
+                    & (p[:, 1] >= 0)
+                    & (p[:, 1] < height)
+                )
+                if inside.mean() < 0.6:
+                    continue
+                value = float(
+                    np.median(np.minimum(distance[p[inside, 1], p[inside, 0]], 6))
+                )
+                best = value if best is None else min(best, value)
+        return 6.0 if best is None else best
+
+    table, held = cost(on_table), cost(lifted)
+    if held <= sharp and table >= held + margin:
+        return True
+    if table <= sharp and held >= table + margin:
+        return False
+    return None
+
+
 def read_images(read_live, newer_than=0):
     report = read_live()
     stamp = report.get("pickup_rgb_unix_s", 0)
@@ -108,10 +164,12 @@ class PickupVerifier:
                 )
             )
         points = cylinder(np.asarray(can["center_m"][:2]), can["center_m"][2])
+        self.projects = []
         for index, (image, (transform, intrinsics, pixels)) in enumerate(
             zip(images, specs)
         ):
             project = projector(transform, intrinsics, world, pixels)
+            self.projects.append((index, project))
             projected = project(points)
             low, high = projected.min(0), projected.max(0)
             # Inner body patch avoids the jaw, bright rim and background edges.
@@ -129,10 +187,8 @@ class PickupVerifier:
             self.views.append(
                 (index, project, patch, center, (center - low) / (high - low))
             )
-        if not self.views:
-            raise RuntimeError(
-                "Can body is not sufficiently visible/textured for pickup check"
-            )
+        if not self.views and not self.projects:
+            raise RuntimeError("No calibrated view for the pickup check")
 
     def check(self, arm, grasp_pose, lifted_pose, closed, timeout=4.5):
         from .can_discard import jaw_center
@@ -140,9 +196,21 @@ class PickupVerifier:
         def rotation(q):
             return arm.frames(q)[1][:3, :3] @ arm.chain[-1][1][:3, :3].T
 
+        def carried(points):
+            relative = (points - jaw_center(arm, grasp_pose, closed)) @ rotation(
+                grasp_pose
+            )
+            return relative @ rotation(lifted_pose).T + jaw_center(
+                arm, lifted_pose, closed
+            )
+
         points = cylinder(np.asarray(self.can["center_m"][:2]), self.can["center_m"][2])
-        relative = (points - jaw_center(arm, grasp_pose, closed)) @ rotation(grasp_pose)
-        held = relative @ rotation(lifted_pose).T + jaw_center(arm, lifted_pose, closed)
+        held = carried(points)
+        seam = lid_ring(self.can)
+        lid_hypotheses = [
+            (index, project(seam), project(carried(seam)))
+            for index, project in self.projects
+        ]
         expectations = []
         for index, project, patch, original, fraction in self.views:
             projected = project(held)
@@ -169,6 +237,10 @@ class PickupVerifier:
             votes = [
                 match_motion(images[index], patch, original, expected)
                 for index, patch, original, expected in expectations
+                if index < len(images)
+            ] + [
+                lid_vote(images[index], table, lifted)
+                for index, table, lifted in lid_hypotheses
                 if index < len(images)
             ]
             known = [vote for vote in votes if vote is not None]

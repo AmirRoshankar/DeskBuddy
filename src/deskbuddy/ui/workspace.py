@@ -108,7 +108,25 @@ def open_editor(root, config, on_apply):
             return
         window.destroy()
 
-    ControlButton(body, text="Apply bounds", command=apply, primary=True).grid(
+    def full_reach():
+        try:
+            from ..kinematics import Arm
+            from ..reachability import full_reach_bounds
+
+            arm = Arm(config.get("model_joint_limits_deg"), config.get("tool_offset_m"))
+            low, high = full_reach_bounds(arm, config)
+        except (ValueError, OSError, RuntimeError) as exc:
+            error.set(str(exc))
+            return
+        for axis in range(3):
+            values[axis][0].set(f"{low[axis] * 100:.3f}")
+            values[axis][1].set(f"{high[axis] * 100:.3f}")
+        error.set("Filled with the arm's full reach above the table; Apply to use it.")
+
+    ControlButton(body, text="Full arm reach", command=full_reach).grid(
         row=8, column=0, columnspan=3, sticky="ew", pady=(12, 0)
+    )
+    ControlButton(body, text="Apply bounds", command=apply, primary=True).grid(
+        row=9, column=0, columnspan=3, sticky="ew", pady=(8, 0)
     )
     return window

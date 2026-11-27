@@ -90,13 +90,15 @@ def test_service_skips_static_image_but_refreshes_and_confirms_changes(monkeypat
     rgb = np.full((100, 100, 3), 100, dtype=np.uint8)
     args = (rgb, np.ones((100, 100)), {}, {})
     service.update(*args)
+    result = None
     for _ in range(6):
         now[0] += 0.3
-        result = service.update(*args)
-    assert len(calls) == 6 and len(result[0]) == 1
+        result = service.update(*args) or result
+    # Two births plus two confirmations, then the static image is skipped.
+    assert len(calls) == 3 and len(result[0]) == 1
     now[0] += 0.3
     service.update(*args)
-    assert len(calls) == 6
+    assert len(calls) == 3
     now[0] += 2
     service.update(*args)
-    assert len(calls) == 7
+    assert len(calls) == 4

@@ -30,6 +30,7 @@ class Dashboard:
     disable: tk.Button | None
     webcam: tk.Label | None = None
     path_status: dict | None = None
+    record: tk.Button | None = None
 
 
 def build(
@@ -41,6 +42,8 @@ def build(
     on_go,
     on_stop,
     on_recalibrate,
+    on_auto_calibrate=lambda: None,
+    on_select_tip=lambda: None,
     hover_m=0.12,
     on_hover=lambda _: None,
     planner_mode="numerical",
@@ -56,7 +59,10 @@ def build(
     on_grab_mode=lambda value: None,
     on_grab_keys=lambda: None,
     on_imf_grasp=lambda: None,
+    on_hole_grasp=lambda: None,
+    on_record=lambda: None,
     on_home=lambda: None,
+    on_set_home=lambda: None,
     on_calibrate_views=lambda: None,
     on_discard_zone=lambda: None,
     task_mode="reach",
@@ -96,6 +102,13 @@ def build(
         disable.pack(side="left", padx=(0, 8))
         ControlButton(actions, text="Recalibrate", command=on_recalibrate).pack(
             side="left"
+        )
+        ControlButton(actions, text="Auto calibrate", command=on_auto_calibrate).pack(
+            side="left", padx=(8, 0)
+        )
+    if controls:
+        ControlButton(actions, text="Select tip", command=on_select_tip).pack(
+            side="left", padx=(8, 0)
         )
     ControlButton(header, text="Bounds", command=on_bounds).pack(side="right")
     ControlButton(header, text="Pop out 3D", command=on_scene).pack(
@@ -220,8 +233,17 @@ def build(
         text="iMF rim grasp" if task_mode == "can_discard" else "iMF grasp",
         command=on_imf_grasp,
     ).pack(fill="x", pady=(0, 8))
+    if task_mode == "can_discard":
+        ControlButton(sidebar, text="Pour-hole grasp", command=on_hole_grasp).pack(
+            fill="x", pady=(0, 8)
+        )
     if controls:
         ControlButton(sidebar, text="Home", command=on_home).pack(fill="x", pady=(0, 8))
+        ControlButton(sidebar, text="Set home", command=on_set_home).pack(
+            fill="x", pady=(0, 8)
+        )
+    record_button = ControlButton(sidebar, text="● Record", command=on_record)
+    record_button.pack(fill="x", pady=(0, 8))
     from ..trajectory.path_overlays import COLORS as PATH_COLORS
 
     path_status = {}
@@ -288,10 +310,10 @@ def build(
         label.pack(fill="both", expand=True)
         return label
 
-    color = camera_panel("Color", 0, "color_view")
+    color = camera_panel("RealSense", 0, "color_view")
     hover = HoverControl(color.master, value=hover_m, on_change=on_hover)
     hover.pack(side="bottom", fill="x", padx=12, pady=(6, 10), before=color)
-    depth = camera_panel("Depth", 1, "depth_view")
+    depth = camera_panel("RealSense depth", 1, "depth_view")
     webcam = camera_panel("Webcam", 2, "webcam_view")
     webcam.configure(text="Waiting for USB camera", fg=COLORS.muted)
     diagram_frame = panel(root, "3D workspace")
@@ -364,4 +386,5 @@ def build(
         disable,
         webcam,
         path_status,
+        record_button,
     )

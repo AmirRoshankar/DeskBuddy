@@ -65,6 +65,9 @@ class OrbitView:
         self.geometry = RenderGeometry()
         self.framing = None
         self.bounds_signature = None
+        # Held while a bounds handle is dragged so the view does not re-frame
+        # (and move the handle away from the cursor) on every edit.
+        self.freeze_framing = False
 
     def rotate(self, dx, dy):
         self.yaw += dx * 0.008
@@ -98,7 +101,7 @@ def scene_projection(snapshot, size, view=None):
     if (
         view is not None
         and view.framing is not None
-        and view.bounds_signature == signature
+        and (view.bounds_signature == signature or view.freeze_framing)
     ):
         center, extent = view.framing
         return center, min(size) * 0.8 / extent
@@ -113,6 +116,54 @@ def scene_projection(snapshot, size, view=None):
         view.framing = (center.copy(), extent)
         view.bounds_signature = signature
     return center, min(size) * 0.8 / extent
+
+
+def bounds_handle_at(snapshot, view, size, pixel, radius=12):
+    """The workspace handle drawn nearest ``pixel`` in the 3D view, or None."""
+    from ..workspace_geometry import box_handles
+
+    center, scale = scene_projection(snapshot, size, view)
+    best = None
+    for handle in box_handles(snapshot["config"]):
+        x, y = view.project(np.atleast_2d(handle[1]), center, scale, size)[0]
+        distance = float(np.hypot(x - pixel[0], y - pixel[1]))
+        if distance <= radius and (best is None or distance < best[0]):
+            best = (distance, handle)
+    return None if best is None else best[1]
+
+
+def drag_bounds(snapshot, view, size, handle, press, pixel, original):
+    """New workspace bounds for a handle dragged from ``press`` to ``pixel``.
+
+    Face handles move along their axis by the mouse motion projected onto that
+    axis on screen; the centre handle moves the box in XY on its own height.
+    Absolute from the press position, so nothing accumulates.
+    """
+    _, anchor, axis, side = handle
+    center, scale = scene_projection(snapshot, size, view)
+    low = np.array(original["workspace_min_m"], float)
+    high = np.array(original["workspace_max_m"], float)
+    motion = np.asarray(pixel, float) - np.asarray(press, float)
+    if axis is None:
+        a = pick_on_plane(snapshot, view, size, press, anchor[2])
+        b = pick_on_plane(snapshot, view, size, pixel, anchor[2])
+        delta = b - a
+        delta[2] = 0
+        return (low + delta).tolist(), (high + delta).tolist()
+    step = np.zeros(3)
+    step[axis] = 0.1
+    screen = (
+        view.project(np.vstack([anchor, anchor + step]), center, scale, size)[1]
+        - view.project(np.atleast_2d(anchor), center, scale, size)[0]
+    )
+    if screen @ screen < 4:
+        raise ValueError("Rotate the view: this axis points at the screen")
+    delta = float(motion @ screen / (screen @ screen) * 0.1)
+    if side == 0:
+        low[axis] = min(low[axis] + delta, high[axis] - 0.01)
+    else:
+        high[axis] = max(high[axis] + delta, low[axis] + 0.01)
+    return low.tolist(), high.tolist()
 
 
 def pick_on_plane(snapshot, view, size, pixel, z):
@@ -228,6 +279,18 @@ def render_scene(snapshot, view, size=(900, 650), envelopes=True, phase=1.0):
     if paper is not None:
         draw.polygon(project(paper), fill=(235, 232, 218, 38), outline="#e6ddbd")
     box(low, high, "#527d91")
+    if config.get("show_workspace", True):
+        from ..workspace_geometry import box_handles
+
+        for name, point, axis, _ in box_handles(config):
+            x, y = project(point)[0]
+            half = 5 if axis is None else 4
+            draw.rectangle(
+                (x - half, y - half, x + half, y + half),
+                fill="#16222a",
+                outline="#77bceb",
+                width=2,
+            )
     for index, obstacle in enumerate(snapshot.get("boxes", []), 1):
         lo, hi = obstacle.low, obstacle.high
         box(lo, hi, "#ffb875", (239, 143, 76, 35))
@@ -324,6 +387,11 @@ def render_scene(snapshot, view, size=(900, 650), envelopes=True, phase=1.0):
                 line(
                     [base + offset, base + offset + [0, 0, can["height_m"]]], "#77cbe8"
                 )
+            # The real lip: the narrower 202 lid the rim/hole grasps target.
+            from ..can_discard import lid_radius
+
+            lid = ring * (lid_radius(can) / radius)
+            line(base + lid + [0, 0, can["height_m"]], "#d8dde3", 2)
         grasp = next(
             (i for i in plan.planner_info or [] if "grasp_pose_rad" in i), None
         )
@@ -363,7 +431,25 @@ def render_scene(snapshot, view, size=(900, 650), envelopes=True, phase=1.0):
     if target is not None:
         x, y = project(target)[0]
         draw.ellipse((x - 6, y - 6, x + 6, y + 6), outline="#63D7C4", width=2)
-        draw.text((x + 10, y - 12), "Target", fill="#63D7C4")
+        draw.text(
+            (x + 10, y - 12), snapshot.get("target_label", "Target"), fill="#63D7C4"
+        )
+    objective = snapshot.get("objective")
+    if objective is not None:
+        hole = np.asarray(objective["point_m"], float)
+        angles = np.linspace(0, 2 * np.pi, 25)
+        rim = np.c_[np.cos(angles), np.sin(angles), np.zeros(len(angles))] * 0.007
+        line(hole + rim, "#ffd166", 3)
+        for axis in (np.array([0.012, 0, 0]), np.array([0, 0.012, 0])):
+            line([hole - axis, hole + axis], "#ffd166", 2)
+        if objective.get("depth_m", 0) > 0:
+            # Where the in-hole fingertip is planned to stop.
+            bottom = hole - [0, 0, objective["depth_m"]]
+            line([hole + [0, 0, 0.03], bottom], "#ffd166", 2)
+            x, y = project(bottom)[0]
+            draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill="#ffd166")
+        x, y = project(hole)[0]
+        draw.text((x + 12, y - 16), objective["label"], fill="#ffd166")
     origin = np.zeros(3)
     for axis, color, label in zip(
         np.eye(3) * 0.08, ["#fa8276", "#72caa6", "#77bceb"], ["X", "Y", "Z"]
@@ -405,8 +491,12 @@ class SceneNavigation:
         require_ctrl=True,
         on_pick=lambda event: None,
         on_hover=lambda event: None,
+        on_handle=None,
     ):
         self.on_pick, self.on_hover = on_pick, on_hover
+        # on_handle(phase, event) with phase "press"/"drag"/"release"; a true
+        # result from "press" captures the drag for a bounds handle.
+        self.on_handle, self.handle_drag = on_handle, False
         self.pick_start = None
         self.label, self.changed, self.require_ctrl = label, changed, require_ctrl
         self.view = OrbitView()
@@ -442,6 +532,14 @@ class SceneNavigation:
         return not self.require_ctrl or bool(event.state & 0x4)
 
     def begin(self, event, button):
+        if (
+            button == 1
+            and not self.enabled(event)
+            and self.on_handle is not None
+            and self.on_handle("press", event)
+        ):
+            self.handle_drag, self.drag, self.pick_start = True, None, None
+            return "break"
         self.drag = (event.x, event.y) if self.enabled(event) else None
         self.pick_start = (
             (event.x, event.y) if button == 1 and not self.enabled(event) else None
@@ -449,6 +547,9 @@ class SceneNavigation:
         return "break"
 
     def move(self, event, button):
+        if self.handle_drag:
+            self.on_handle("drag", event)
+            return "break"
         if (
             self.pick_start is not None
             and np.linalg.norm(np.array([event.x, event.y]) - self.pick_start) > 4
@@ -467,6 +568,10 @@ class SceneNavigation:
         return "break"
 
     def release(self, event):
+        if self.handle_drag:
+            self.handle_drag = False
+            self.on_handle("release", event)
+            return "break"
         if self.pick_start is not None and not self.enabled(event):
             self.on_pick(event)
         self.pick_start = None

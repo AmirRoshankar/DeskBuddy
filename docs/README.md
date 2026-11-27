@@ -19,7 +19,7 @@
 - [Whole-arm tracking and validation](guides/whole-arm-and-tracking.md).
 - [Communication measurements](reference/communication_timing.md) and [accuracy investigation](reference/accuracy-investigation.md).
 
-`research/results/` contains compact measured JSON summaries. `assets/` contains synthetic UI fixtures and plots. Reports distinguish geometric validity, simulation results and physical measurements; do not compare them as the same metric.
+`research/results/` contains compact measured JSON summaries. `assets/` contains the public success video, its animated preview, UI fixtures and plots. Reports distinguish geometric validity, simulation results and physical measurements; do not compare them as the same metric.
 
 ## Historical material
 

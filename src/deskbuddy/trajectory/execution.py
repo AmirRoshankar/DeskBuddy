@@ -149,6 +149,42 @@ def execution_scene(config, boxes, arm):
     return scene
 
 
+# Intermediate learned-route waypoints only guide the tool; every resulting
+# joint pose is still checked for table, workspace, object and self clearance.
+WAYPOINT_IK_TOLERANCE_M = 0.008
+
+
+def waypoint_ik(arm, point, seed, config, final=False):
+    """Sequential route IK: exact at the target, near-exact between waypoints.
+
+    A route point a few millimetres outside the locked-roll reach (or a
+    local minimum from the previous pose) used to reject the whole learned
+    candidate and force an RRT fallback.
+    """
+    strict = config["ik_tolerance_m"]
+    locked = config.get("locked_joints", [])
+    try:
+        return arm.ik(point, seed, strict, locked_joints=locked)
+    except ValueError as first:
+        failure = first
+    guesses = []
+    for offset in (20, -20, 45, -45):
+        guess = np.array(seed, float).copy()
+        guess[3] += np.deg2rad(offset)
+        guesses.append(np.clip(guess, arm.lower + 1e-7, arm.upper - 1e-7))
+    for tolerance in (
+        (strict,) if final else (strict, max(strict, WAYPOINT_IK_TOLERANCE_M))
+    ):
+        for guess in guesses if tolerance == strict else [None, *guesses]:
+            try:
+                return arm.ik(
+                    point, seed, tolerance, locked_joints=locked, initial_guess=guess
+                )
+            except ValueError:
+                continue
+    raise failure
+
+
 def lift_route(
     arm, start, target, xy, config, *, method, candidates, boxes, scene_revision
 ):
@@ -188,8 +224,11 @@ def lift_route(
             count = max(1, int(np.ceil(np.linalg.norm(b - a) / 0.005)))
             refined.extend(a + (b - a) * t for t in np.linspace(0, 1, count + 1)[1:])
         xyz = np.array(refined)
+    from .cancel import raise_if_cancelled
+
     poses = [start]
     for point in xyz[1:]:
+        raise_if_cancelled()
         if orientation is not None:
             from ..grasp_geometry import oriented_ik
 
@@ -205,14 +244,18 @@ def lift_route(
             )
         else:
             poses.append(
-                arm.ik(
+                waypoint_ik(
+                    arm,
                     point,
                     poses[-1],
-                    config["ik_tolerance_m"],
-                    locked_joints=config.get("locked_joints", []),
+                    config,
+                    final=len(poses) == len(xyz) - 1,
                 )
             )
     poses = np.array(poses)
+    waypoint_error = max(
+        float(np.linalg.norm(arm.fk(q) - p)) for q, p in zip(poses[1:], xyz[1:])
+    )
     parameter = np.r_[0, np.cumsum(np.max(np.abs(np.diff(poses, axis=0)), axis=1))]
     keep = np.r_[True, np.diff(parameter) > 1e-10]
     poses, parameter = poses[keep], parameter[keep]
@@ -237,6 +280,7 @@ def lift_route(
         fallback=False,
         allow_object_collisions=bool(config.get("allow_object_collisions", False)),
         collision_predictions=[],
+        max_waypoint_ik_error_m=waypoint_error,
     )
     plan = Plan(times, joints, target, 0.0, planner_info=[info])
     if orientation is not None:
@@ -255,10 +299,9 @@ def lift_route(
         n = max(1, int(np.ceil(np.max(np.abs(b - a)) / np.deg2rad(0.5))))
         dense_joints.extend(a + (b - a) * t for t in np.linspace(0, 1, n + 1)[1:])
     dense_joints = np.array(dense_joints)
-    from .joint_planner import check_self_collision
+    from .joint_planner import check_self_collision_path
 
-    for pose in dense_joints:
-        check_self_collision(arm, pose)
+    check_self_collision_path(arm, dense_joints)
     dense_times = np.r_[
         0,
         np.cumsum(
@@ -302,7 +345,7 @@ class RoutePlanner:
 
     def plan(self, arm, start, target, config, boxes, method, candidates, revision):
         from .evaluate import classical
-        from .live_preview import PlannerSuite, preview_scene
+        from .live_preview import preview_scene, shared_suite
 
         scene = execution_scene(config, boxes, arm)
         initial = arm.fk(start)[:2]
@@ -341,7 +384,7 @@ class RoutePlanner:
                 paths = [p for p in paths if p is not None]
         else:
             if self.suite is None:
-                self.suite = PlannerSuite()
+                self.suite = shared_suite()
             row = next(
                 r
                 for r in self.suite.compare(

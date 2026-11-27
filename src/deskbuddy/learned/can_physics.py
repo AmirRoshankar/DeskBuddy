@@ -12,8 +12,33 @@ from pathlib import Path
 
 import numpy as np
 
+# Default toy rim fingers (half sizes x, y, z in metres) and per-finger travel.
+RIM_FINGER = (0.0015, 0.004, 0.012)
+RIM_TRAVEL = 0.02
+# Body-grasp fingers: an assumed SO-101-like jaw pad, 4 x 20 x 40 mm, with
+# enough travel to open around a 74 mm can. Not a measured jaw model.
+BODY_FINGER = (0.002, 0.01, 0.02)
+BODY_TRAVEL = 0.045
 
-def scene_xml(diameter, height, mass=0.02, friction=0.8, force=4.0):
+
+def scene_xml(
+    diameter,
+    height,
+    mass=0.02,
+    friction=0.8,
+    force=4.0,
+    finger=RIM_FINGER,
+    travel=RIM_TRAVEL,
+    lid_diameter=None,
+):
+    """Toy can scene. ``lid_diameter`` adds a necked top (real 211/202 cans
+    neck from the 66 mm body to a ~54 mm lid over ~19 mm); None keeps the
+    original straight-walled toy for reproducing earlier datasets."""
+    fx, fy, fz = finger
+    if lid_diameter is not None:
+        return _necked_xml(
+            diameter, height, lid_diameter, mass, friction, force, fx, fy, fz, travel
+        )
     r = diameter / 2
     # A recessed solid lid/body and a rolled raised lip leave room for an
     # inside/outside pinch. The 6 mm recess is a deliberately explicit toy prior.
@@ -38,11 +63,78 @@ def scene_xml(diameter, height, mass=0.02, friction=0.8, force=4.0):
         <body name="target" mocap="true" pos="{r} 0 {height + 0.04}"/>
         <body name="hand" pos="{r} 0 {height + 0.04}"><freejoint name="hand_free"/>
           <inertial pos="0 0 0" mass=".05" diaginertia=".0001 .0001 .0001"/>
-          <body pos="-.0015 0 0"><joint name="left" type="slide" axis="-1 0 0" range="0 .02"/>
-            <geom type="box" size=".0015 .004 .012" pos="0 0 -.012" mass=".025"/>
+          <body pos="-{fx} 0 0"><joint name="left" type="slide" axis="-1 0 0" range="0 {travel}"/>
+            <geom type="box" size="{fx} {fy} {fz}" pos="0 0 -{fz}" mass=".025"/>
           </body>
-          <body pos=".0015 0 0"><joint name="right" type="slide" axis="1 0 0" range="0 .02"/>
-            <geom type="box" size=".0015 .004 .012" pos="0 0 -.012" mass=".025"/>
+          <body pos="{fx} 0 0"><joint name="right" type="slide" axis="1 0 0" range="0 {travel}"/>
+            <geom type="box" size="{fx} {fy} {fz}" pos="0 0 -{fz}" mass=".025"/>
+          </body>
+        </body>
+      </worldbody>
+      <equality><weld body1="hand" body2="target" relpose="0 0 0 1 0 0 0" solref=".005 1"/></equality>
+      <actuator>
+        <position joint="left" kp="5000" kv="10" forcerange="-{force} {force}"/>
+        <position joint="right" kp="5000" kv="10" forcerange="-{force} {force}"/>
+      </actuator>
+    </mujoco>'''
+
+
+NECK_HEIGHT = 0.019
+
+
+def _ring(radius, z, size):
+    parts = []
+    for angle in np.arange(32) * (2 * np.pi / 32):
+        other = angle + 2 * np.pi / 32
+        a = [radius * np.cos(angle), radius * np.sin(angle), z]
+        b = [radius * np.cos(other), radius * np.sin(other), z]
+        parts.append(
+            f'<geom type="capsule" fromto="{" ".join(map(str, a + b))}" size="{size}" mass=".00005"/>'
+        )
+    return "".join(parts)
+
+
+def _necked_xml(diameter, height, lid, mass, friction, force, fx, fy, fz, travel):
+    """Body cylinder, stepped conical neck, recessed panel and a seam ring.
+
+    Seam: a 2.6 mm thick rolled ring at the lid radius, its top at the can
+    height; panel 6 mm below. Dimensions follow 211/202 can specs loosely.
+    """
+    body_r, lid_r = diameter / 2, lid / 2
+    neck_start = height - NECK_HEIGHT
+    panel = height - 0.006
+    geoms = [
+        f'<geom name="body" type="cylinder" size="{body_r - 0.0005} {neck_start / 2}" '
+        f'pos="0 0 {neck_start / 2}" mass="{max(0.003, mass - 0.002)}"/>'
+    ]
+    steps = 5
+    for index in range(steps):
+        z0 = neck_start + (panel - neck_start) * index / steps
+        z1 = neck_start + (panel - neck_start) * (index + 1) / steps
+        radius = body_r + (lid_r - body_r) * (index + 0.5) / steps
+        geoms.append(
+            f'<geom type="cylinder" size="{radius - 0.0005} {(z1 - z0) / 2}" '
+            f'pos="0 0 {(z0 + z1) / 2}" mass=".0003"/>'
+        )
+    seam = _ring(lid_r - 0.0013, height - 0.0013, 0.0013)
+    return f'''<mujoco model="toy_necked_can">
+      <option timestep=".002" gravity="0 0 -9.81" integrator="implicitfast"/>
+      <default><geom friction="{friction} .005 .0001" condim="4" solref=".006 1"/>
+      <joint damping="1"/></default>
+      <worldbody>
+        <geom name="table" type="plane" size="1 1 .01"/>
+        <body name="can" pos="0 0 .001"><freejoint/>
+          {"".join(geoms)}
+          {seam}
+        </body>
+        <body name="target" mocap="true" pos="{lid_r} 0 {height + 0.04}"/>
+        <body name="hand" pos="{lid_r} 0 {height + 0.04}"><freejoint name="hand_free"/>
+          <inertial pos="0 0 0" mass=".05" diaginertia=".0001 .0001 .0001"/>
+          <body pos="-{fx} 0 0"><joint name="left" type="slide" axis="-1 0 0" range="0 {travel}"/>
+            <geom type="box" size="{fx} {fy} {fz}" pos="0 0 -{fz}" mass=".025"/>
+          </body>
+          <body pos="{fx} 0 0"><joint name="right" type="slide" axis="1 0 0" range="0 {travel}"/>
+            <geom type="box" size="{fx} {fy} {fz}" pos="0 0 -{fz}" mass=".025"/>
           </body>
         </body>
       </worldbody>
@@ -55,12 +147,23 @@ def scene_xml(diameter, height, mass=0.02, friction=0.8, force=4.0):
 
 
 def rollout(
-    diameter, height, offset, quaternion, opening, mass=0.02, friction=0.8, force=4.0
+    diameter,
+    height,
+    offset,
+    quaternion,
+    opening,
+    mass=0.02,
+    friction=0.8,
+    force=4.0,
+    finger=RIM_FINGER,
+    travel=RIM_TRAVEL,
+    approach=0.04,
+    lid_diameter=None,
 ):
     import mujoco
 
     model = mujoco.MjModel.from_xml_string(
-        scene_xml(diameter, height, mass, friction, force)
+        scene_xml(diameter, height, mass, friction, force, finger, travel, lid_diameter)
     )
     data = mujoco.MjData(model)
     can_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "can")
@@ -71,7 +174,7 @@ def rollout(
     quat = quat / max(np.linalg.norm(quat), 1e-9)
     data.mocap_quat[0] = quat
     target = np.asarray(offset, float)
-    data.mocap_pos[0] = target + [0, 0, 0.04]
+    data.mocap_pos[0] = target + [0, 0, approach]
     hand_joint = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "hand_free")
     hand_address = model.jnt_qposadr[hand_joint]
     data.qpos[hand_address : hand_address + 3] = data.mocap_pos[0]
@@ -95,7 +198,7 @@ def rollout(
             max_height = max(max_height, float(data.xpos[can_id, 2]))
             contacts = max(contacts, int(data.ncon))
 
-    above = target + [0, 0, 0.04]
+    above = target + [0, 0, approach]
     phase(above, above, 0.1, opening)
     initial_xy = data.xpos[can_id, :2].copy()
     phase(above, target, 0.3, opening)
@@ -119,8 +222,9 @@ def rollout(
     destination = lifted + [0.12, 0, 0]
     phase(lifted, destination, 0.35, 0.0008)
     transfer_clearance = bottom()
-    phase(destination, destination, 0.15, 0.025)
-    phase(destination, destination, 0.5, 0.025)
+    release = max(0.025, opening)
+    phase(destination, destination, 0.15, release)
+    phase(destination, destination, 0.5, release)
     final = data.xpos[can_id].copy()
     dropped = bool(
         abs(final[0] - 0.12) < 0.05 and abs(final[1]) < 0.05 and abs(bottom()) < 0.005
@@ -140,6 +244,35 @@ def rollout(
         physics=True,
         gravity_m_s2=9.81,
     )
+
+
+def body_rollout(
+    diameter, height, yaw, mass=0.02, friction=0.8, force=4.0, lid_diameter=None
+):
+    """Numerical body-grasp baseline: centered, closing across the diameter.
+
+    Mirrors the live body grasp (opening = diameter + 6 mm, contact centred
+    near 55% height) with the assumed BODY_FINGER pads, descending from above
+    the can top so the fingers never start inside it.
+    """
+    tip_z = max(0.002, 0.55 * height - BODY_FINGER[2])
+    quat = [0, np.cos(yaw / 2), np.sin(yaw / 2), 0]
+    result = rollout(
+        diameter,
+        height,
+        [0.0, 0.0, tip_z],
+        quat,
+        min(diameter + 0.006, 2 * BODY_TRAVEL - 1e-4),
+        mass,
+        friction,
+        force,
+        finger=BODY_FINGER,
+        travel=BODY_TRAVEL,
+        approach=height - tip_z + 0.03,
+        lid_diameter=lid_diameter,
+    )
+    result["grasp"] = "numerical_body_baseline"
+    return result
 
 
 def generate(folder, objects=500, attempts=4, seed=20261126, focused=False):

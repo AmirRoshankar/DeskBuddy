@@ -6,8 +6,9 @@ import numpy as np
 from PIL import ImageDraw
 
 from ..planning import Plan, interpolate_joints, validate_plan
+from .cancel import raise_if_cancelled
 from .execution import check_swept_obstacles, lift_route
-from .joint_planner import check_self_collision, plan_joint_route
+from .joint_planner import check_self_collision_path, plan_joint_route
 
 COLORS = dict(direct="#D4D4D8", mlp="#F4C66A", imf="#C19AFF", rrt="#63D7C4")
 
@@ -24,6 +25,8 @@ class OverlayPlanner:
         def changed():
             if on_update is not None:
                 on_update(copy.deepcopy(entries))
+            # Stale previews stop between methods instead of finishing RRT.
+            raise_if_cancelled()
 
         geometry = [b.as_dict() if hasattr(b, "as_dict") else b for b in boxes]
 
@@ -45,8 +48,7 @@ class OverlayPlanner:
                             arm, plan, {**config, "allow_object_collisions": False}
                         )
                         check_swept_obstacles(arm, plan.joints_rad, geometry)
-                        for pose in plan.joints_rad:
-                            check_self_collision(arm, pose)
+                        check_self_collision_path(arm, plan.joints_rad)
                 except ValueError as exc:
                     valid, error = False, str(exc)
             return dict(
@@ -57,6 +59,18 @@ class OverlayPlanner:
                 reason=error,
             )
 
+        from ..reachability import check_reach
+
+        try:
+            check_reach(arm, target, np.asarray(start, float)[4], config)
+        except ValueError as exc:
+            # Provably unreachable: one clear reason instead of four failures.
+            entries.extend(
+                entry(method, error=str(exc))
+                for method in ("direct", "mlp", "imf", "rrt")
+            )
+            changed()
+            return entries
         try:
             goal = arm.ik(
                 target, start, config["ik_tolerance_m"], config.get("locked_joints", [])
@@ -67,10 +81,10 @@ class OverlayPlanner:
             entries.append(entry("direct", error=str(exc)))
         changed()
         try:
-            from .live_preview import PlannerSuite, preview_scene
+            from .live_preview import preview_scene, shared_suite
 
             if self.suite is None:
-                self.suite = PlannerSuite()
+                self.suite = shared_suite()
             results = self.suite.compare(
                 preview_scene(config, boxes),
                 arm.fk(start)[:2],

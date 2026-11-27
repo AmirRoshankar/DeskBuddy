@@ -304,3 +304,31 @@ def test_requested_tracking_tolerance_allows_error_below_ten_degrees(error_deg):
     assert result["substeps_per_original_step"] == 2
     assert result["max_planned_command_speed_deg_s"] <= 12.0
     assert result["max_planned_command_speed_deg_s"] > 1.5
+
+
+def test_measured_start_offset_is_blended_without_a_velocity_spike():
+    from copy import deepcopy
+
+    import numpy as np
+
+    from deskbuddy.config import DEFAULT
+    from deskbuddy.execute_reach import start_from_measured
+    from deskbuddy.kinematics import Arm
+    from deskbuddy.planning import Plan, interpolate_joints, validate_plan
+
+    arm = Arm()
+    config = deepcopy(DEFAULT)
+    config.update(control_hz=250, max_joint_speed_deg_s=24)
+    start = np.deg2rad(config["preview_start_deg"])
+    goal = start + np.deg2rad([10, 5, -5, 0, 0])
+    times, q = interpolate_joints(start, goal, config)
+    plan = Plan(times, q, arm.fk(goal), 0.0)
+    measured = start + np.deg2rad([0.4, -0.3, 0.2, 0.1, 0.0])
+    naive = deepcopy(plan)
+    naive.joints_rad[0] = measured
+    with pytest.raises(ValueError, match="velocity"):
+        validate_plan(arm, naive, config)
+    anchored = start_from_measured(plan, measured, config)
+    assert np.allclose(anchored.joints_rad[0], measured)
+    assert np.allclose(anchored.joints_rad[-1], goal)
+    validate_plan(arm, anchored, config)

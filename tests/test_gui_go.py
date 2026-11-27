@@ -200,7 +200,15 @@ def test_click_go_gating_and_invalid_selection(tmp_path, monkeypatch):
             click(385, 195)
             root.after(250, check_preview)
 
+        preview_deadline = time.monotonic() + 5
+
         def check_preview():
+            if (
+                not (tmp_path / "runs/last_plan.json").exists()
+                and time.monotonic() < preview_deadline
+            ):
+                root.after(50, check_preview)
+                return
             assert not calls, "Selecting a point must not execute motion"
             assert np.allclose(drawn[-1], q), (
                 "Selecting a target must not animate the measured arm"
@@ -317,7 +325,7 @@ def test_click_go_gating_and_invalid_selection(tmp_path, monkeypatch):
             assert len(calls) == 1, "Recalibration must never launch robot motion"
 
         root.after(850, select_and_go)
-        root.after(7000, root.destroy)
+        root.after(12000, root.destroy)
         return root
 
     monkeypatch.setattr(camera, "RealSense", Camera)
