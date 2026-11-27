@@ -4,27 +4,27 @@
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Robot](https://img.shields.io/badge/robot-SO--101-F46D67)
 
-**An interactive robotics workbench that turns a tabletop scene into robot motion.**
+**Pick up a soda can and drop it into a selected discard area with an SO-101 robot arm.**
 
-DeskBuddy brings perception, inverse kinematics, motion planning and feedback control into one desktop interface. Built around a real **SO-101 follower arm**, it lets you select targets in 3D, compare classical and learned trajectories, and run can pick-and-transfer tasks while watching the robot's estimated world alongside its cameras.
+DeskBuddy combines computer vision, inverse kinematics and learned motion planning in a desktop app. Select targets in 3D, compare planners side by side, and watch the arm work through live camera views and an interactive world model.
 
-## See it in action
+## Demo
 
-[![DeskBuddy: real SO-101 can pickup and transfer](docs/assets/success-preview.gif)](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
+[![SO-101 picking up a can and dropping it in the discard area](docs/assets/success-preview.gif)](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
 
-**Real robot. Real can.** The `success` recording shows the arm picking up and transferring a soda can, with the live 3D workspace and camera views on screen. The looping excerpt runs at 3x speed.
+The arm picks up the can, moves it to the discard area and releases it. Recorded on real hardware. Preview at 3x speed.
 
-[Watch the full 100-second recording](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
+[Full demo · MP4 · 100 seconds](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
 
-## What makes it interesting
+## Features
 
-- **Classical robotics meets generative planning.** Numerical FK/IK handles robot geometry; Direct, MLP, improved MeanFlow (**iMF**) and RRT trajectories can be viewed together and compared in the same scene.
-- **A world model you can inspect.** Orbit, pan and zoom the 3D workspace, drag its bounds, select targets from camera or 3D views, and inspect whole-arm geometry and detected objects.
-- **RGB-first tabletop perception.** Two camera views share an A4-based workspace. Known can dimensions support localization; the webcam locates the pour opening as a dark region near the can top. RealSense depth is available as an auxiliary view.
-- **Feedback beyond the planned path.** Encoder feedback, Kalman state estimates, retry-aware serial control and bounded corrections address the gap between a planned motion and the physical arm.
-- **One-click visual tracking.** Select the fixed jaw tip in the webcam. The can pregrasp controller can measure a local image Jacobian with small out-and-return probes, then refine horizontal alignment from observed motion. This is implemented and regression-tested; hardware evaluation is ongoing.
-- **Grasp, lift, verify, retry.** Body, rim and pour-hole experiments share a pick/transfer/drop pipeline, post-lift pickup checks, a user-defined discard zone and up to five grasp attempts.
-- **A reproducible learning lab.** Flow-matching experiments, model comparisons, whole-arm validation and MuJoCo gravity/contact rollouts run separately from hardware.
+- **Can pickup and discard** — can detection, grasping, transfer and release into a user-defined zone, with pickup checks and retries.
+- **Four motion planners** — compare Direct, MLP, improved MeanFlow (**iMF**) and RRT paths in the same view.
+- **Interactive 3D workspace** — select targets, drag bounds, inspect arm geometry, and pan, rotate or zoom the scene.
+- **Multi-camera perception** — shared RGB workspace, webcam pour-hole detection and an auxiliary RealSense depth view.
+- **Feedback control** — encoder feedback, Kalman state estimation, serial retries and configurable control timing.
+- **Webcam fine alignment** — one-click tip tracking, measured local image Jacobians and bounded horizontal corrections.
+- **Simulation and training** — flow-matching experiments, planner benchmarks and MuJoCo gravity/contact rollouts.
 
 ## Try it without a robot
 
@@ -62,13 +62,13 @@ flowchart LR
   Vision --> Control
 ```
 
-**Flow proposes motion; IK solves geometry; feedback corrects execution.** The learned planner does not replace the robot model. Candidate trajectories are converted to joint motion and checked against the full arm. Near a grasp, visual correction operates in XY while height and insertion remain separate geometric tasks.
+Flow models propose trajectories, numerical IK converts them to joint motion, and whole-arm checks validate the path. Encoder and webcam feedback refine execution.
 
-The controller supports a requested **250 Hz** update loop with timing instrumentation; achieved throughput depends on the serial bus and hardware. Camera updates run independently of the motor loop.
+The control loop supports a **250 Hz update target** with timing instrumentation. Camera updates run independently.
 
 ## Explore the research
 
-The project makes the transition from geometric feasibility to physical manipulation visible: model inputs and losses, identical evaluation conditions, collision checks, simulation outcomes and real demonstrations are documented separately.
+Explore the models, training setup, planner comparisons and physics experiments:
 
 | Explore | Read |
 | --- | --- |
@@ -77,8 +77,6 @@ The project makes the transition from geometric feasibility to physical manipula
 | Learned grasp proposals | [Rim-grasp training](docs/guides/can-rim-grasp-training.md) |
 | Gravity, contact and pickup retries | [Physics experiments](docs/guides/can-physics-and-retries.md) |
 | Whole-arm execution and checks | [Tracking and validation](docs/guides/whole-arm-and-tracking.md) |
-
-The physical demo is an example execution, not a benchmark success rate. Quantitative simulation and held-out results live with their experiment definitions in the linked reports.
 
 ## Find your way around
 
@@ -104,7 +102,7 @@ python -m ruff format --check src tests scripts
 python -m pytest -q
 ```
 
-Tests run without an attached arm. Optional dependency and local-checkpoint tests may skip on a fresh checkout. Raw training data, weights, private calibration and camera snapshots stay out of Git; the selected public demo is included under `docs/assets/`.
+Tests run without an attached arm. Local calibration, datasets and checkpoints stay in ignored folders. The public demo is in `docs/assets/`.
 
 ## License
 
