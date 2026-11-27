@@ -47,7 +47,7 @@ DEFAULT = {
     "can_request": None,
     "discard_zone": None,
     "task_mode": "reach",
-    "flow_checkpoint": "runs/flowreach/imf.pt",
+    "flow_checkpoint": "runs/deskbuddy/imf.pt",
     "proposal_method": "imf",
     "flow_seed_strategy": "direct",
     "restrict_to_test_bed": True,

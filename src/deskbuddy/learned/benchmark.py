@@ -32,7 +32,7 @@ def summary(rows):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach")
+    parser.add_argument("--folder", default="runs/deskbuddy")
     parser.add_argument("--samples", type=int, default=600)
     args = parser.parse_args()
     folder = Path(args.folder)

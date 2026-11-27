@@ -15,7 +15,7 @@ from .train import energy_score
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach/multimodal")
+    parser.add_argument("--folder", default="runs/deskbuddy/multimodal")
     args = parser.parse_args()
     folder = Path(args.folder)
     meta = json.loads((folder / "dataset.json").read_text())

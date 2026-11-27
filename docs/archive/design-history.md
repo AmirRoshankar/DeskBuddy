@@ -1,3 +1,5 @@
+<!-- Historical design notes; current layout lives in src/deskbuddy/ui/. -->
+
 ---
 name: DeskBuddy
 description: Native controls for depth-guided SO-101 reaching
@@ -47,7 +49,7 @@ components:
 ## Overview
 
 A restrained desktop tool for someone operating a real arm at their desk.
-The user's requested direction is dark grey, white, and minimal, with green Go,
+The palette uses dark grey and white with green Go,
 red Stop and red planned paths; orange identifies joints and the height control.
 The live scene leads; controls remain obvious and predictable. The native
 application remains Tkinter, with no browser or additional UI runtime.
@@ -68,7 +70,7 @@ and measurements. Do not turn operator instructions into decorative captions.
 
 ## Layout
 
-Preserve the operator's requested arrangement: stacked zooms on the far left,
+The initial layout used: stacked zooms on the far left,
 color and depth side by side, kinematics below color, activity below depth.
 Hover height and actions occupy one row; connection/telemetry occupy the next.
 There is no display title or redundant instructional footer. Logs retain detailed
@@ -88,8 +90,8 @@ outlines; visual state changes must not shift surrounding content.
 
 ## Components
 
-`ui/widgets.py` owns buttons, panel headings, and the bounded event log.
-`ui/layout.py` owns composition. These modules receive callbacks and do not
+`src/deskbuddy/ui/widgets.py` owns buttons, panel headings, and the bounded event log.
+`src/deskbuddy/ui/layout.py` owns composition. These modules receive callbacks and do not
 import motor transports or execute motion. Go stays bold white when disabled;
 Stop retains hold; Recalibrate starts a new capture session.
 

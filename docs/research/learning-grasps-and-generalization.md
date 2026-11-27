@@ -78,14 +78,14 @@ rather than assuming one-shot outputs satisfy collision constraints.
 Reproduce from the repository folder:
 
 ```powershell
-..\..\.venv\Scripts\python.exe -m deskbuddy.trajectory.joint_dataset --folder runs/flowreach/new-joint-data --families 250 --queries 8 --routes 2
-..\..\.venv\Scripts\python.exe -m deskbuddy.trajectory.train --dataset runs/flowreach/joint-trajectories-v2 --output runs/flowreach/new-joint-models --steps 10000 --batch 256 --width 192
-..\..\.venv\Scripts\python.exe -m deskbuddy.trajectory.joint_evaluate --dataset runs/flowreach/joint-trajectories-v2 --models runs/flowreach/new-joint-models --output runs/flowreach/new-joint-evaluation.json --limit 80 --candidates 4
+..\..\.venv\Scripts\python.exe -m deskbuddy.trajectory.joint_dataset --folder runs/deskbuddy/new-joint-data --families 250 --queries 8 --routes 2
+..\..\.venv\Scripts\python.exe -m deskbuddy.trajectory.train --dataset runs/deskbuddy/joint-trajectories-v2 --output runs/deskbuddy/new-joint-models --steps 10000 --batch 256 --width 192
+..\..\.venv\Scripts\python.exe -m deskbuddy.trajectory.joint_evaluate --dataset runs/deskbuddy/joint-trajectories-v2 --models runs/deskbuddy/new-joint-models --output runs/deskbuddy/new-joint-evaluation.json --limit 80 --candidates 4
 ```
 
 New generation uses current collision-body checks. To reproduce the historical
 two-stage dataset, revalidate an older source with `--revalidate SOURCE --folder NEW`.
-Shared `runs/flowreach` storage remains capped at 10 GB. None of these CLIs opens a
+Shared `runs/deskbuddy` storage remains capped at 10 GB. None of these CLIs opens a
 camera, serial port or motor controller.
 
 ## What ML should learn for grasping

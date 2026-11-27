@@ -601,7 +601,7 @@ def learned_can_cycle(arm, start, config, can, excluded_angles=()):
     rows = propose(
         [can["diameter_m"], can["diameter_m"], can["height_m"]],
         candidates=32,
-        checkpoint="runs/flowreach/can-rim-grasps-v1/imf.pt",
+        checkpoint="runs/deskbuddy/can-rim-grasps-v1/imf.pt",
     )
     rows = [row for row in rows if row["geometric_valid"]]
     # The model was trained with the lip at the body radius; the real lip is

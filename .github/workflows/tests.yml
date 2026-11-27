@@ -28,4 +28,5 @@ jobs:
       - if: runner.os == 'Windows'
         run: python -m pytest -q
       - run: python -m deskbuddy demo --headless --output runs/ci-demo
+      - run: python scripts/build_planner_comparison.py --reproduce
       - run: python -m build --wheel

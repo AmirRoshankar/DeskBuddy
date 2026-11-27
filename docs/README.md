@@ -7,7 +7,9 @@
 - [Hardware and calibration](guides/hardware.md)
 - [Architecture](guides/architecture.md)
 - [Optional model checkpoints](guides/models.md)
-- [Maintainer handoff](MAINTAINER.md)
+- [Development guide](MAINTAINER.md)
+- [Reproduce the main result](research/reproducibility.md)
+- [References and learning resources](research/references.md)
 
 ## Learning and experiments
 

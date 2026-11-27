@@ -194,7 +194,7 @@ def test_rim_model_samples_valid_lip_proposals_without_body_fallback():
 
     from deskbuddy.learned.grasp_proposals import propose
 
-    checkpoint = "runs/flowreach/can-rim-grasps-v1/imf.pt"
+    checkpoint = "runs/deskbuddy/can-rim-grasps-v1/imf.pt"
     if not Path(checkpoint).exists():
         pytest.skip("Offline rim experiment checkpoint is not distributed")
     rows = propose([0.066, 0.066, 0.12222], candidates=32, checkpoint=checkpoint)

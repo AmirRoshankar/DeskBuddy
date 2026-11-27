@@ -49,7 +49,7 @@ def main():
     config.update(
         planner_mode="flow_assisted",
         proposal_method=args.model,
-        flow_checkpoint=f"runs/flowreach/{args.model}.pt",
+        flow_checkpoint=f"runs/deskbuddy/{args.model}.pt",
         max_joint_speed_deg_s=min(12.0, config["max_joint_speed_deg_s"]),
     )
     target = np.fromstring(args.target_m, sep=",")

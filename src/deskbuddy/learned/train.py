@@ -25,7 +25,7 @@ def energy_score(samples, observed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach")
+    parser.add_argument("--folder", default="runs/deskbuddy")
     parser.add_argument("--steps", type=int, default=15000)
     parser.add_argument("--batch", type=int, default=512)
     parser.add_argument("--width", type=int, default=192)

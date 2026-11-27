@@ -35,8 +35,8 @@ import numpy as np
 # Earlier checkpoints, evaluated as deployed: body-radius output moved onto the
 # lid seam exactly like can_discard.to_lid_radius does live.
 LEGACY = dict(
-    live_geometric="runs/flowreach/can-rim-grasps-v1/imf.pt",
-    physics_v1="runs/flowreach/can-rim-grasps-physics-v1/imf.pt",
+    live_geometric="runs/deskbuddy/can-rim-grasps-v1/imf.pt",
+    physics_v1="runs/deskbuddy/can-rim-grasps-physics-v1/imf.pt",
 )
 SCALE = 0.05
 LID = 0.0541

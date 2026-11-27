@@ -1,63 +1,82 @@
 {
-  "version": "0.1.0",
-  "url": "https://github.com/AmirRoshankar/DeskBuddy/releases/download/v0.1.0/deskbuddy-models-v0.1.0.zip",
-  "sha256": "23ba85a45c7643b6be3546aa25842f7a4dc852a37f8e9720db7e7a60e0ccb2f9",
+  "version": "0.2.0",
+  "url": "https://github.com/AmirRoshankar/DeskBuddy/releases/download/v0.2.0/deskbuddy-models-v0.2.0.zip",
+  "sha256": "4644789a961d47584637ce459c481e840bb028076c28a1fdfb0b4680f68e2415",
   "files": {
-    "runs/flowreach/trajectories-v1/models-v3/mlp.pt": "c80c8738f186ec06616850e000b0c8a5db8d3cecac57421b24e2c66c7b65af8f",
-    "runs/flowreach/trajectories-v1/models-v3/fm.pt": "8d43f99fdf6ceedf000978da9b1936efd8f53bab098d39dcc9848b1a11ad04a6",
-    "runs/flowreach/trajectories-v1/models-v3/imf.pt": "a162f06fd6765f9096a9472eacd4eec6618a564ba5b4c2da14bb3e2f8152b4b2",
-    "runs/flowreach/can-rim-grasps-v1/imf.pt": "8f8327310a37b2968570189d6b70dcaab90d01b39aac3602cfb950024ef0e857",
-    "runs/flowreach/can-rim-grasps-physics-v1/imf.pt": "290cd2b8da63af17f9bb927426b5f7de52c33c686471b6cf4451e622f242e319",
-    "runs/flowreach/can-grasps-v1/mlp.pt": "a5527b46b03f1c7f008552ea271d40d2056644047d8b23ad2deccea3c57534a2",
-    "runs/flowreach/can-grasps-v1/fm.pt": "39d37c74b63dc15526a4fa06ee55c15702f6cc55a188cee9b0b1bd4e61c46b64",
-    "runs/flowreach/can-grasps-v1/imf.pt": "2bb490c533bc637b055013224f494a8bf4d186df26934482be776cd28db505bb",
-    "runs/flowreach/can-grasps-v1/grasp_mf.pt": "a838eb5764ae40abf762d857ba3ad5706b1b0a6411ffe137498f62c4f18d03c5"
+    "runs/deskbuddy/can-grasps-v1/fm.pt": "39d37c74b63dc15526a4fa06ee55c15702f6cc55a188cee9b0b1bd4e61c46b64",
+    "runs/deskbuddy/can-grasps-v1/grasp_mf.pt": "a838eb5764ae40abf762d857ba3ad5706b1b0a6411ffe137498f62c4f18d03c5",
+    "runs/deskbuddy/can-grasps-v1/imf.pt": "2bb490c533bc637b055013224f494a8bf4d186df26934482be776cd28db505bb",
+    "runs/deskbuddy/can-grasps-v1/mlp.pt": "a5527b46b03f1c7f008552ea271d40d2056644047d8b23ad2deccea3c57534a2",
+    "runs/deskbuddy/can-rim-grasps-physics-v1/imf.pt": "290cd2b8da63af17f9bb927426b5f7de52c33c686471b6cf4451e622f242e319",
+    "runs/deskbuddy/can-rim-grasps-v1/imf.pt": "8f8327310a37b2968570189d6b70dcaab90d01b39aac3602cfb950024ef0e857",
+    "runs/deskbuddy/trajectories-v1/dataset.json": "0748d843251fe573c3f9a0272f2e8877f84c1f0d3fece7f3194950ad6acd7902",
+    "runs/deskbuddy/trajectories-v1/dataset.npz": "a4e87228a933fa8deea29142ba57342fbe4aa334dd59981c19353c7287474e28",
+    "runs/deskbuddy/trajectories-v1/models-v3/fm.pt": "8d43f99fdf6ceedf000978da9b1936efd8f53bab098d39dcc9848b1a11ad04a6",
+    "runs/deskbuddy/trajectories-v1/models-v3/imf.pt": "a162f06fd6765f9096a9472eacd4eec6618a564ba5b4c2da14bb3e2f8152b4b2",
+    "runs/deskbuddy/trajectories-v1/models-v3/mf.pt": "6f55b188576512b2bcec50e0d2d1343f324a3fa14551a8167aff4977807b463b",
+    "runs/deskbuddy/trajectories-v1/models-v3/mlp.pt": "c80c8738f186ec06616850e000b0c8a5db8d3cecac57421b24e2c66c7b65af8f",
+    "runs/deskbuddy/trajectories-v1/models-v3/training_summary.json": "d3cc1d98245c225d6e161c3c12f536ec81cb4544d4ad10b5c7fbbdc85f2f75f6",
+    "runs/deskbuddy/trajectory-seeds/20261125/evaluation.json": "ce54b69a964bd2b5d145c1551066e0a3b36066554919feb39219f84a36c54e26",
+    "runs/deskbuddy/trajectory-seeds/20261125/fm.pt": "4070d59de3ecd68799388e2f47646b0ddd94aa8bb46adc7252ae9af3896d2e8e",
+    "runs/deskbuddy/trajectory-seeds/20261125/imf.pt": "032a2925654849dfd5b82a23cefe8c9808257db771d981732404d108d9eff5f8",
+    "runs/deskbuddy/trajectory-seeds/20261125/mlp.pt": "18a808a07844d44bbddc710f911f7e73b379693b57d9288c457b572bb6679a5c",
+    "runs/deskbuddy/trajectory-seeds/20261125/training_summary.json": "f07a6dbd29c337ec41ed922c67fe80ef3fab486289fd3f73a63ba9fd933160d7",
+    "runs/deskbuddy/trajectory-seeds/20261126/evaluation.json": "922ee2ccca3c110658a68c637bd7c09844a49a2fa1177d706bc169f9dd3ee162",
+    "runs/deskbuddy/trajectory-seeds/20261126/fm.pt": "b25f44df86492e9f4e0c359767d8bf4a5c8ee289486b8007084b953a31832830",
+    "runs/deskbuddy/trajectory-seeds/20261126/imf.pt": "177665a9e53ae4207edde0f3007170d7109c01b68376b5a079a6806989d0b817",
+    "runs/deskbuddy/trajectory-seeds/20261126/mlp.pt": "eb5ec710b3f4875a83cfb964f9ad3eac0fba2898491fcf9a5ec7c39677c5607c",
+    "runs/deskbuddy/trajectory-seeds/20261126/training_summary.json": "b2de34fdd5d2c0bd614bf6eee28ac85ee68a123d10f558ecbf3a011795b6d4cf",
+    "runs/deskbuddy/trajectory-seeds/20261127/evaluation.json": "2e103fedd197ff4526d817446873f7a4d8657dd08a0b7ffc1f35f10c3a3d8dc5",
+    "runs/deskbuddy/trajectory-seeds/20261127/fm.pt": "244250d22e6001ce76e5e078658d9b85ca3b9440eaaa8a293c4b6fd16a01605f",
+    "runs/deskbuddy/trajectory-seeds/20261127/imf.pt": "5e60f12c067400e07ec25917bffa2dba30f6302a4316cf8e74e74578525e1b24",
+    "runs/deskbuddy/trajectory-seeds/20261127/mlp.pt": "33e5c033f183c78f5857349f74dec6c4008a395d03fcd3efa7012a412e74e24d",
+    "runs/deskbuddy/trajectory-seeds/20261127/training_summary.json": "3181dfed8ea3c8807d21b419141aa1a84ce51525d469819fdc0ef35a867cea26"
   },
   "metadata": {
-    "runs/flowreach/trajectories-v1/models-v3/mlp.pt": {
+    "runs/deskbuddy/trajectories-v1/models-v3/mlp.pt": {
       "task": "cartesian_trajectory_2d",
       "method": "mlp"
     },
-    "runs/flowreach/trajectories-v1/models-v3/fm.pt": {
+    "runs/deskbuddy/trajectories-v1/models-v3/fm.pt": {
       "task": "cartesian_trajectory_2d",
       "method": "fm"
     },
-    "runs/flowreach/trajectories-v1/models-v3/imf.pt": {
+    "runs/deskbuddy/trajectories-v1/models-v3/imf.pt": {
       "task": "cartesian_trajectory_2d",
       "method": "imf"
     },
-    "runs/flowreach/can-rim-grasps-v1/imf.pt": {
+    "runs/deskbuddy/can-rim-grasps-v1/imf.pt": {
       "task": "synthetic_can_grasp",
       "method": "imf",
       "profile": "can_rim"
     },
-    "runs/flowreach/can-rim-grasps-physics-v1/imf.pt": {
+    "runs/deskbuddy/can-rim-grasps-physics-v1/imf.pt": {
       "task": "synthetic_can_grasp",
       "method": "imf",
       "profile": "can_rim",
       "physics_training": true
     },
-    "runs/flowreach/can-grasps-v1/mlp.pt": {
+    "runs/deskbuddy/can-grasps-v1/mlp.pt": {
       "task": "synthetic_can_grasp",
       "method": "mlp",
       "profile": "can"
     },
-    "runs/flowreach/can-grasps-v1/fm.pt": {
+    "runs/deskbuddy/can-grasps-v1/fm.pt": {
       "task": "synthetic_can_grasp",
       "method": "fm",
       "profile": "can"
     },
-    "runs/flowreach/can-grasps-v1/imf.pt": {
+    "runs/deskbuddy/can-grasps-v1/imf.pt": {
       "task": "synthetic_can_grasp",
       "method": "imf",
       "profile": "can"
     },
-    "runs/flowreach/can-grasps-v1/grasp_mf.pt": {
+    "runs/deskbuddy/can-grasps-v1/grasp_mf.pt": {
       "task": "synthetic_can_grasp",
       "method": "grasp_mf",
       "profile": "can"
     }
   },
   "includes_third_party_detector_weights": false,
-  "physical_grasp_success_measured": false
+  "contents": "Original proxy benchmark checkpoints and data, grasp checkpoints, and three-seed MLP/FM/iMF study"
 }

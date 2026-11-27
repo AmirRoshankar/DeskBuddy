@@ -14,7 +14,7 @@ from .data import check_budget
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach")
+    parser.add_argument("--folder", default="runs/deskbuddy")
     parser.add_argument("--samples", type=int, default=100)
     parser.add_argument("--voltage", type=float, default=5.4)
     args = parser.parse_args()

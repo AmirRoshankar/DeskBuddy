@@ -45,7 +45,7 @@ def main():
     from plotly.subplots import make_subplots
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach")
+    parser.add_argument("--folder", default="runs/deskbuddy")
     parser.add_argument(
         "--output", default="docs/research/flowreach-visualizations.html"
     )

@@ -10,7 +10,7 @@ def propose(
     yaw_rad=0.0,
     candidates=16,
     seed=1739,
-    checkpoint="runs/flowreach/box-grasps-v1/imf.pt",
+    checkpoint="runs/deskbuddy/box-grasps-v1/imf.pt",
 ):
     import torch
 

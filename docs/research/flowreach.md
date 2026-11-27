@@ -59,7 +59,7 @@ that this simple teacher dataset contains diverse valid routes to the same goal.
 
 ## Data, training and resources
 
-All artifacts live together under ignored `runs/flowreach/`: dataset, metadata,
+All artifacts live together under ignored `runs/deskbuddy/`: dataset, metadata,
 training log, MLP/iMF checkpoints, training summary and detailed benchmark.
 No camera images or physical demonstrations are required. Synthetic pairs are
 generated using the saved model, workspace and numerical IK. Endpoint clearance
@@ -106,7 +106,7 @@ The learned warm-start reduced median IK computation by roughly 2.9×. The simpl
 MLP was comparably effective and slightly faster; this experiment does not establish
 that iMF is superior. Neither result implies a 2.9× reduction in physical reach time.
 See `flowreach-benchmark.json` for the public aggregate metrics and local
-`runs/flowreach/benchmark.json` for per-case details.
+`runs/deskbuddy/benchmark.json` for per-case details.
 
 ## Refinement and deployment limits
 
@@ -138,10 +138,10 @@ full-body collision guarantee is added by learning.
 Install `.[flow,dev]` into the prepared environment, then run from the repo root:
 
 ```powershell
-python -m deskbuddy.learned.data --config configs/local.json --folder runs/flowreach --train 5000 --validation 600 --test 600
-python -m deskbuddy.learned.train --folder runs/flowreach --steps 15000 --batch 512 --width 192
-python -m deskbuddy.learned.benchmark --folder runs/flowreach --samples 600
-python -m deskbuddy.learned.coarse_refinement --folder runs/flowreach
+python -m deskbuddy.learned.data --config configs/local.json --folder runs/deskbuddy --train 5000 --validation 600 --test 600
+python -m deskbuddy.learned.train --folder runs/deskbuddy --steps 15000 --batch 512 --width 192
+python -m deskbuddy.learned.benchmark --folder runs/deskbuddy --samples 600
+python -m deskbuddy.learned.coarse_refinement --folder runs/deskbuddy
 ```
 
 Use `configs/local.example.json` for a portable example, or the commissioned local

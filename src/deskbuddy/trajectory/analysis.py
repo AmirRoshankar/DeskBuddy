@@ -16,7 +16,7 @@ from .collision import Scene
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", default="runs/flowreach/trajectories-v1/models-v3")
+    parser.add_argument("--models", default="runs/deskbuddy/trajectories-v1/models-v3")
     args = parser.parse_args()
     folder = Path(args.models)
     report = json.loads((folder / "evaluation.json").read_text(encoding="utf-8"))
@@ -154,9 +154,9 @@ def main():
         "## Reproduce",
         "",
         "```powershell",
-        "python -m deskbuddy.trajectory.train --output runs/flowreach/trajectories-v1/models-v3 --steps 20000 --lr 0.0003 --diagonal-fraction 0.25 --adaptive-power 0.5 --imf-auxiliary-head",
-        "python -m deskbuddy.trajectory.evaluate --models runs/flowreach/trajectories-v1/models-v3",
-        "python -m deskbuddy.trajectory.analysis --models runs/flowreach/trajectories-v1/models-v3",
+        "python -m deskbuddy.trajectory.train --output runs/deskbuddy/trajectories-v1/models-v3 --steps 20000 --lr 0.0003 --diagonal-fraction 0.25 --adaptive-power 0.5 --imf-auxiliary-head",
+        "python -m deskbuddy.trajectory.evaluate --models runs/deskbuddy/trajectories-v1/models-v3",
+        "python -m deskbuddy.trajectory.analysis --models runs/deskbuddy/trajectories-v1/models-v3",
         "```",
         "",
         "Training refuses to overwrite checkpoints: use a new output directory for a new run. [Structured metrics](trajectory-learning.json) include all timing components and checkpoint steps.",

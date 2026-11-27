@@ -135,11 +135,11 @@ meter. No motors were connected, powered, enabled, or moved for this analysis.
 Install `.[flow,viz]`, then run these offline commands from the repo root:
 
 ```powershell
-python -m deskbuddy.learned.energy_comparison --folder runs/flowreach --voltage 5.4
-python -m deskbuddy.learned.multimodal_data --folder runs/flowreach/multimodal
-python -m deskbuddy.learned.train --folder runs/flowreach/multimodal --steps 15000 --batch 512 --width 128 --validation-score energy
-python -m deskbuddy.learned.multimodal_evaluate --folder runs/flowreach/multimodal
-python -m deskbuddy.learned.visualize --folder runs/flowreach --output docs/research/flowreach-visualizations.html
+python -m deskbuddy.learned.energy_comparison --folder runs/deskbuddy --voltage 5.4
+python -m deskbuddy.learned.multimodal_data --folder runs/deskbuddy/multimodal
+python -m deskbuddy.learned.train --folder runs/deskbuddy/multimodal --steps 15000 --batch 512 --width 128 --validation-score energy
+python -m deskbuddy.learned.multimodal_evaluate --folder runs/deskbuddy/multimodal
+python -m deskbuddy.learned.visualize --folder runs/deskbuddy --output docs/research/flowreach-visualizations.html
 ```
 
 The persistent operator hardware lock remains active. The root experiment folder

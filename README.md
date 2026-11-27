@@ -4,31 +4,64 @@
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Robot](https://img.shields.io/badge/robot-SO--101-F46D67)
 
-**Pick up a soda can and drop it into a selected discard area with an SO-101 robot arm.**
+**One-step flow matching for robot motion planning.**
 
-DeskBuddy combines computer vision, inverse kinematics and learned motion planning in a desktop app. Select targets in 3D, compare planners side by side, and watch the arm work through live camera views and an interactive world model.
+DeskBuddy compares learned trajectory proposals with classical planning, then connects them to an SO-101 arm through vision, numerical IK and feedback control. The real-robot demo picks up a soda can, moves it to a selected discard area and releases it.
 
 ## Demo
 
-[![SO-101 picking up a can and dropping it in the discard area](docs/assets/success-preview.gif)](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
+[![SO-101 can pickup, transfer and discard](docs/assets/success-preview.gif)](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
 
-The arm picks up the can, moves it to the discard area and releases it. Recorded on real hardware. Preview at 3x speed.
+- **Question:** can a one-step Improved MeanFlow planner propose collision-free paths fast enough for closed-loop use?
+- **Result:** on 500 held-out planning problems, iMF produced a valid path **86.2%** of the time versus **69.2%** for an MLP; on blocked direct routes, **72.7% versus 37.6%**. Four iMF candidates reached **97.6%**.
+- **Limit:** the harder full-arm experiment solved **0 of 31** blocked cases with iMF.
+- **Open problem:** incorporating new observations while a trajectory is already executing.
 
-[Full demo · MP4 · 100 seconds](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4)
+[Full physical demo · MP4 · 100 seconds](https://raw.githubusercontent.com/AmirRoshankar/DeskBuddy/main/docs/assets/success.mp4). The preview runs at 3x speed.
 
-## Features
+## Main result
 
-- **Can pickup and discard** — can detection, grasping, transfer and release into a user-defined zone, with pickup checks and retries.
-- **Four motion planners** — compare Direct, MLP, improved MeanFlow (**iMF**) and RRT paths in the same view.
-- **Interactive 3D workspace** — select targets, drag bounds, inspect arm geometry, and pan, rotate or zoom the scene.
-- **Multi-camera perception** — shared RGB workspace, webcam pour-hole detection and an auxiliary RealSense depth view.
-- **Feedback control** — encoder feedback, Kalman state estimation, serial retries and configurable control timing.
-- **Webcam fine alignment** — one-click tip tracking, measured local image Jacobians and bounded horizontal corrections.
-- **Simulation and training** — flow-matching experiments, planner benchmarks and MuJoCo gravity/contact rollouts.
+![Held-out trajectories from the planner comparison](docs/assets/trajectory-learning.png)
 
-## Try it without a robot
+| Planner | Valid path | Valid with direct route blocked | Median total planning, ms |
+| --- | ---: | ---: | ---: |
+| RRT-Connect | 100.0% | 100.0% | 1.18 |
+| MLP | 69.2% | 37.6% | 0.84 |
+| FM · 8 evaluations | 73.4% | 47.8% | 0.85 |
+| MF · 1 evaluation | 81.8% | 62.9% | 0.54 |
+| iMF · 1 evaluation | 86.2% | 72.7% | 0.53 |
 
-Use Python 3.12+ with Tk available. Standard Windows Python includes Tk; Linux needs Tk and a display for the desktop interface.
+These are tool-proxy paths: validity checks every segment against inflated 2D obstacles before fallback. All rows use the same 500 problems, including 245 blocked routes, from 20 held-out layout families. CPU timings include generation, checking and RRT fallback; they exclude perception and robot execution.
+
+**Statistics:** iMF exceeded MF by **4.4 percentage points**, with a **95% layout-family bootstrap interval of 2.8–6.2** for the fixed checkpoints. In three fresh training runs, one-candidate iMF averaged **85.3% ± 0.2 pp**, versus **69.3% ± 0.8 pp** for MLP; four-candidate iMF averaged **97.7% ± 0.1 pp**. The ± values are sample standard deviations across seeds.
+
+[Full comparison](docs/research/planner-comparison.md) · [Three-seed study](docs/research/training-seeds.md) · [Model formulations](docs/research/model-formulation-audit.md)
+
+## What I built
+
+- **A robot that clears a can from the workspace.** Detection, grasping, pickup checks, transfer, discard and retries share one task pipeline.
+- **A way to compare learned and classical paths.** Direct, MLP, iMF and RRT previews use the same live scene; numerical IK and whole-arm checks connect proposals to the arm.
+- **A 3D view of what the robot thinks is there.** Select targets, drag workspace bounds and inspect the arm, objects and planned paths alongside both cameras.
+- **Corrections based on what the arm actually does.** Encoder feedback, Kalman state estimation and webcam tracking support bounded execution corrections. Local XY probes estimate an image Jacobian for fine alignment.
+- **Experiments that can be rerun without hardware.** Shared datasets, held-out families, training seeds and MuJoCo gravity/contact experiments separate geometric, simulation and physical results.
+
+## Setup
+
+![DeskBuddy physical setup](docs/assets/setup-photo.webp)
+
+**Photo key:** SO-101 arm in the foreground; Logitech Brio above the monitor; RealSense D435 on the left mount; A4 workspace with blue reference marks around the can. The discard zone is selected in the UI rather than marked on the desk.
+
+## Reproduce the main result
+
+After installing the project with `python -m pip install -e ".[flow]"`:
+
+```bash
+python scripts/build_planner_comparison.py --reproduce
+```
+
+Downloads checksummed checkpoints and synthetic data when needed, reruns the 500-condition CPU benchmark, and rebuilds the table and bootstrap in `runs/deskbuddy/reproduction/`. No cameras or motors are used. [Inputs, versions and training commands](docs/research/reproducibility.md).
+
+## Run the app
 
 ```bash
 python -m venv .venv
@@ -38,60 +71,38 @@ python -m deskbuddy demo --headless --output runs/offline
 python -m deskbuddy demo
 ```
 
-The offline demo uses CPU numerical IK and synthetic geometry. Optional extras enable learning, simulation and hardware:
+**Windows** is the primary hardware UI platform; double-click **Start DeskBuddy.cmd** after local setup. **Linux** supports offline experiments and the Tk desktop preview; CI runs under Xvfb. Camera drivers and hardware setup are documented separately. Python 3.12+ is required. macOS has not been tested.
 
-```bash
-python -m pip install -e ".[flow,viz]"                  # model training and plots
-python -m pip install -e ".[simulation]"                # MuJoCo gravity/contact experiments
-python -m pip install -e ".[camera,robot,perception]"    # live cameras, arm and detection
-```
+Optional extras: `[flow,viz]` for learning/plots, `[simulation]` for MuJoCo, and `[camera,robot,perception]` for hardware. See [installation](docs/guides/installation.md).
 
-For a commissioned Windows setup, double-click **Start DeskBuddy.cmd**. Startup reads cameras and joint state; motor hold and movement are explicit UI actions. See [installation](docs/guides/installation.md) and [hardware setup](docs/guides/hardware.md).
+**Hardware:** clamp the base, keep the workspace clear and support the arm before pressing Disable, which releases torque.
 
-## From perception to action
+## Open problems
 
-```mermaid
-flowchart LR
-  Cameras[RGB cameras] --> Scene[Shared 3D workspace]
-  Scene --> Target[Selected target or can]
-  Target --> Planner[Direct / MLP / iMF / RRT]
-  Planner --> IK[Numerical IK + whole-arm checks]
-  IK --> Control[Encoder feedback controller]
-  Control --> Arm[SO-101]
-  Arm --> Vision[Webcam fine alignment]
-  Vision --> Control
-```
+- **Plans go stale when objects move.** Scene relocation handling and [continuous-replanning tests](tests/test_continuous_replan.py) are in place; incorporating new evidence smoothly, rather than repeatedly restarting, remains the research goal.
+- **Whole-arm constraints change the problem.** iMF solved 0/31 blocked cases in the joint-space experiment. Conditioning on body geometry and improving difficult-route coverage are next steps.
+- **Grasp simulation still has a transfer gap.** The physics-trained checkpoint completed 6/246 simulated pick-and-drops versus 3/246 for the geometric checkpoint. Better contact models and outcome feedback are needed.
+- **Pickup verification has no force sensor.** Visual evidence can be ambiguous under occlusion, can rotation or reflections.
 
-Flow models propose trajectories, numerical IK converts them to joint motion, and whole-arm checks validate the path. Encoder and webcam feedback refine execution.
+## Development history
 
-The control loop supports a **250 Hz update target** with timing instrumentation. Camera updates run independently.
+I developed DeskBuddy locally in November 2026 and published the initial release on **November 26, 2026**. The early work arrived in one release commit; subsequent improvements have their actual commit dates.
 
-## Explore the research
+| Date | Milestone | Evidence |
+| --- | --- | --- |
+| Nov 24 | Click-to-Reach: camera/arm calibration and first physical IK reach | [Calibration report](docs/research/results/calibration_results.json), [first reach](docs/research/results/first_reach_results.json) |
+| Nov 25 | FlowReach: flow-matching experiments and the planner comparison | [Trajectory plot](docs/assets/trajectory-learning.png), [metrics](docs/research/results/trajectory-learning.json) |
+| Nov 26 | FlowDesk: multi-camera workspace, grasping and physics experiments | [Controller view](docs/assets/success-poster.jpg), [MuJoCo experiment](docs/guides/can-physics-and-retries.md) |
+| Nov 26 | DeskBuddy: first public release and recorded can pickup/discard | [Release](https://github.com/AmirRoshankar/DeskBuddy/releases/tag/v0.1.0), [physical demo](docs/assets/success.mp4) |
+| Nov 27 | Reproduction command, three-seed study and research documentation | [Seed results](docs/research/training-seeds.md), [reproduction guide](docs/research/reproducibility.md) |
 
-Explore the models, training setup, planner comparisons and physics experiments:
+Click-to-Reach, FlowReach and FlowDesk were names used during development, not separate projects. New artifacts use `runs/deskbuddy/`; older experiment records retain their original names. I used AI coding tools for implementation, debugging and tests.
 
-| Explore | Read |
-| --- | --- |
-| How MLP, flow matching and iMF are formulated | [Model formulation audit](docs/research/model-formulation-audit.md) |
-| Trajectory learning and planner comparisons | [Trajectory learning](docs/research/trajectory-learning.md) / [Comparison](docs/research/planner-comparison.md) |
-| Learned grasp proposals | [Rim-grasp training](docs/guides/can-rim-grasp-training.md) |
-| Gravity, contact and pickup retries | [Physics experiments](docs/guides/can-physics-and-retries.md) |
-| Whole-arm execution and checks | [Tracking and validation](docs/guides/whole-arm-and-tracking.md) |
+## References and learning resources
 
-## Find your way around
+[MeanFlow](https://arxiv.org/abs/2505.13447) · [Improved MeanFlow](https://arxiv.org/abs/2512.02012) · [Adaptive Mean Flow](https://arxiv.org/abs/2610.06089) · [Lie-group MeanFlow grasping](https://arxiv.org/abs/2608.26076) · [SORT](https://arxiv.org/abs/1602.00763) · [YOLOE](https://arxiv.org/abs/2503.07465) · [OMPL](https://ompl.kavrakilab.org/) · [LeRobot](https://github.com/huggingface/lerobot) · [MuJoCo](https://github.com/google-deepmind/mujoco) · [MIT 6.8210](https://underactuated.csail.mit.edu/)
 
-```text
-src/deskbuddy/       Desktop app, perception, kinematics, control and learning
-src/deskbuddy/ui/    3D workspace, camera alignment, tip selection and recording
-src/deskbuddy/trajectory/   Trajectory planners, collision checks and scene tracking
-tests/              Offline regression and simulation tests
-configs/            Public templates; machine configuration stays local
-scripts/            Setup, training, calibration and evaluation tools
-docs/               Guides, research notes, results and the success demo
-runs/               Ignored local datasets, checkpoints, recordings and runtime state
-```
-
-[Documentation](docs/README.md) · [Controller guide](docs/guides/controller.md) · [Architecture](docs/guides/architecture.md) · [Maintainer handoff](docs/MAINTAINER.md)
+[How these resources relate to the code](docs/research/references.md) · [Documentation](docs/README.md) · [Development guide](docs/MAINTAINER.md)
 
 ## Development
 
@@ -102,8 +113,8 @@ python -m ruff format --check src tests scripts
 python -m pytest -q
 ```
 
-Tests run without an attached arm. Local calibration, datasets and checkpoints stay in ignored folders. The public demo is in `docs/assets/`.
+Offline checks run on Ubuntu and Windows. Local calibration, datasets and checkpoints stay in ignored folders; public reproducibility artifacts are distributed as checksummed release assets.
 
 ## License
 
-Original code is [Apache-2.0](LICENSE). Bundled models and optional dependencies retain their respective terms; see [third-party notices](THIRD_PARTY_NOTICES.md).
+[Apache-2.0](LICENSE). Models and optional dependencies retain their respective terms; see [third-party notices](THIRD_PARTY_NOTICES.md).

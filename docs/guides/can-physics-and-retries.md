@@ -1,6 +1,6 @@
 # Can pickup evidence, retries and contact-physics experiment
 
-See [the complete handoff](../MAINTAINER.md) for operational details and absolute paths. The user has prohibited physical movement until explicitly authorizing it again. No hardware commands or torque changes were made during this work.
+This experiment tests whether training on simulated contact outcomes improves can pickup and transfer. For implementation details, see the [development guide](../MAINTAINER.md).
 
 ## Post-lift behavior
 
@@ -8,7 +8,7 @@ The worker now compares fresh RGB can-body appearance against two hypotheses: it
 
 Confirmed pickup permits transfer and release. Confirmed miss replans a different approach, at most **five total attempts**. Unknown evidence retains hold without release/retry. Every new approach is preflighted from measured joints; iMF avoids tried radial directions and the numerical baseline varies closing yaw. Five misses never proceed to the discard phase. Drop success itself remains unverified.
 
-This is a visual motion estimate, not contact/force sensing. Template matching may be uncertain under occlusion, low texture, can spin or a bumped camera. The new code needs an idle-viewer reload before use; the running UI was intentionally left alone while the user went to bed. Hardware validation is pending.
+This is a visual motion estimate, not contact/force sensing. Template matching may be uncertain under occlusion, low texture, can spin or a bumped camera. The physical can-to-discard demonstration is shown in the [README](../../README.md#demo). This report evaluates the separate simulated grasp checkpoints.
 
 ## Physics is different from geometric pose validity
 
@@ -32,4 +32,4 @@ On **246 matched held-out cans**, one proposal and one NFE per model:
 
 Low counts and low success do not establish reliable superiority or real transfer. The physics checkpoint remains an **offline experiment**, not silently substituted into the live action. The original geometric checkpoint remains the current live source. A better grasp pose alone may not solve retention; contact geometry, jaw force, carried-object orientation and closed-loop grasp control need further work.
 
-Artifacts: `runs/flowreach/can-rim-physics-v1/`, `can-rim-physics-v2/`, `can-rim-physics-training-v1/`, and `can-rim-grasps-physics-v1/`. Exact per-model held-out outcomes are in the last folder's `physics-evaluation.json`. Source: `learned/can_physics.py`, `can_physics_evaluate.py`, `grasp_lab.py --physics-dataset`. No real-robot grasp success has been measured for these changes.
+Artifacts: `runs/deskbuddy/can-rim-physics-v1/`, `can-rim-physics-v2/`, `can-rim-physics-training-v1/`, and `can-rim-grasps-physics-v1/`. Exact per-model held-out outcomes are in the last folder's `physics-evaluation.json`. Source: `learned/can_physics.py`, `can_physics_evaluate.py`, `grasp_lab.py --physics-dataset`. The table above measures the simulated checkpoints, not a physical success rate.

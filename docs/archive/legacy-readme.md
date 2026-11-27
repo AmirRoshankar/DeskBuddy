@@ -84,7 +84,7 @@ workspace root to open the controller using its existing `.venv`. It detects an
 already running viewer and preserves Disable. Startup reads camera and encoders;
 it never enables torque or starts a reach. The launcher expects this workspace's
 `outputs/click-to-reach` layout and a commissioned `configs/local.json`.
-See the [architecture](../guides/architecture.md), [design tokens](../../DESIGN.md), and
+See the [architecture](../guides/architecture.md), [design tokens](design-history.md), and
 [communication measurements](../reference/communication_timing.md).
 See [FlowReach training and results](../research/flowreach.md) for the learned experiment.
 The [learned-field analysis](../research/flowreach-analysis.md) explains the MLP baseline,

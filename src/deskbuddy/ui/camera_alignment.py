@@ -255,6 +255,9 @@ class CameraAlignment:
         self.window.focus_set()
 
     def refresh_live(self):
+        if self.live_pending is not None:
+            self.window.after_cancel(self.live_pending)
+            self.live_pending = None
         if self.closed:
             return
         try:

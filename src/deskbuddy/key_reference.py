@@ -16,7 +16,7 @@ def main():
         "--box", nargs=4, type=int, required=True, metavar=("X1", "Y1", "X2", "Y2")
     )
     args = parser.parse_args()
-    root = Path("runs/flowreach/perception").resolve()
+    root = Path("runs/deskbuddy/perception").resolve()
     root.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("YOLO_CONFIG_DIR", str(root / "settings"))
     os.environ["YOLO_AUTOINSTALL"] = "false"

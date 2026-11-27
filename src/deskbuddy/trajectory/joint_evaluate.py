@@ -181,12 +181,12 @@ def evaluate(dataset, models_folder, output, limit=100, candidates=4):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", default="runs/flowreach/joint-trajectories-v1")
+    parser.add_argument("--dataset", default="runs/deskbuddy/joint-trajectories-v1")
     parser.add_argument(
-        "--models", default="runs/flowreach/joint-trajectories-v1/models-v1"
+        "--models", default="runs/deskbuddy/joint-trajectories-v1/models-v1"
     )
     parser.add_argument(
-        "--output", default="runs/flowreach/joint-trajectories-v1/evaluation.json"
+        "--output", default="runs/deskbuddy/joint-trajectories-v1/evaluation.json"
     )
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--candidates", type=int, default=4)

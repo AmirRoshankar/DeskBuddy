@@ -278,7 +278,7 @@ def generate(base, folder, families=100, queries=6, routes=2, workers=4, seed=20
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/local.json")
-    parser.add_argument("--folder", default="runs/flowreach/joint-trajectories-v1")
+    parser.add_argument("--folder", default="runs/deskbuddy/joint-trajectories-v1")
     parser.add_argument("--families", type=int, default=100)
     parser.add_argument("--queries", type=int, default=6)
     parser.add_argument("--routes", type=int, default=2)

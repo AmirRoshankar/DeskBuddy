@@ -19,9 +19,9 @@ def bundle(files):
 
 
 def test_bundle_installs_only_verified_files_and_preserves_local_models(tmp_path):
-    data, manifest = bundle({"runs/flowreach/demo/imf.pt": b"example checkpoint"})
+    data, manifest = bundle({"runs/deskbuddy/demo/imf.pt": b"example checkpoint"})
     assert install_bundle(data, manifest, tmp_path) == 1
-    target = tmp_path / "runs/flowreach/demo/imf.pt"
+    target = tmp_path / "runs/deskbuddy/demo/imf.pt"
     target.write_bytes(b"local training result")
     with pytest.raises(ValueError, match="Existing checkpoint differs"):
         install_bundle(data, manifest, tmp_path)
@@ -32,8 +32,8 @@ def test_bundle_installs_only_verified_files_and_preserves_local_models(tmp_path
     "name",
     [
         "../outside.pt",
-        "runs/flowreach/../../../outside.pt",
-        "runs/flowreach/..\\..\\outside.pt",
+        "runs/deskbuddy/../../../outside.pt",
+        "runs/deskbuddy/..\\..\\outside.pt",
     ],
 )
 def test_bundle_rejects_traversal_before_writing(tmp_path, name):
@@ -46,6 +46,18 @@ def test_bundle_rejects_traversal_before_writing(tmp_path, name):
 
 
 def test_bundle_rejects_tampered_download(tmp_path):
-    data, manifest = bundle({"runs/flowreach/demo/imf.pt": b"example"})
+    data, manifest = bundle({"runs/deskbuddy/demo/imf.pt": b"example"})
     with pytest.raises(ValueError, match="Bundle checksum mismatch"):
         install_bundle(data + b"tampered", manifest, tmp_path)
+
+
+@pytest.mark.parametrize("prefix", ["runs/deskbuddy/", "runs/flowreach/"])
+def test_bundle_installs_reproduction_data_and_legacy_release(tmp_path, prefix):
+    files = {
+        prefix + "dataset.json": b'{"seed": 1729}',
+        prefix + "dataset.npz": b"synthetic data",
+    }
+    data, manifest = bundle(files)
+    assert install_bundle(data, manifest, tmp_path) == 2
+    for name, content in files.items():
+        assert (tmp_path / name).read_bytes() == content

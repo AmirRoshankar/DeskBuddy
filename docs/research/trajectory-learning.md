@@ -34,14 +34,14 @@ The initial plain-L2 run had severe iMF divergence; the second adaptive-p=1 run 
 
 The MeanFlow objective follows [Geng et al., Algorithm 1](https://arxiv.org/html/2505.13447v1). iMF uses the predicted-velocity JVP formulation and optional auxiliary head described in [Geng et al., Algorithm 1 and Appendix A](https://arxiv.org/html/2512.02012v2). Standard FM uses instantaneous-velocity regression with Euler sampling; MF/iMF use interval-average updates. MF and iMF have genuinely different training tangents.
 
-No paths from this experiment are sent to motors. This 2D tool proxy has no full-arm collision checks, IK lifting, acceleration limits or perception uncertainty model. Physical motor energy cannot be inferred from these un-timed XY paths. The live UI still uses the earlier endpoint-IK model. Next: validate obstacle perception, lift paths continuously into joint space, then supervised static-obstacle trials before dynamic stop-and-replan.
+The proxy benchmark is distinct from hardware execution. The live controller lifts selected trajectories into numerical IK, validates whole-arm geometry and can replan from current feedback when scene geometry changes. The [full-arm experiment](learning-grasps-and-generalization.md) is the harder transfer test; its 0/31 blocked-case result motivates whole-body conditioning.
 
 ## Reproduce
 
-```powershell
-python -m deskbuddy.trajectory.train --output runs/flowreach/trajectories-v1/models-v3 --steps 20000 --lr 0.0003 --diagonal-fraction 0.25 --adaptive-power 0.5 --imf-auxiliary-head
-python -m deskbuddy.trajectory.evaluate --models runs/flowreach/trajectories-v1/models-v3
-python -m deskbuddy.trajectory.analysis --models runs/flowreach/trajectories-v1/models-v3
+```bash
+python scripts/build_planner_comparison.py --reproduce
 ```
+
+See the [reproduction guide](reproducibility.md) for the released inputs, seeds and fresh training commands.
 
 Training refuses to overwrite checkpoints: use a new output directory for a new run. [Structured metrics](results/trajectory-learning.json) include all timing components and checkpoint steps.

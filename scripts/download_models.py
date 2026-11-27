@@ -34,8 +34,8 @@ def install_bundle(data, manifest, root, replace=False):
                 or ".." in name.parts
                 or "\\" in entry.filename
                 or ":" in entry.filename
-                or not entry.filename.startswith("runs/flowreach/")
-                or name.suffix != ".pt"
+                or not entry.filename.startswith(("runs/deskbuddy/", "runs/flowreach/"))
+                or name.suffix not in (".pt", ".json", ".npz")
                 or stat.S_ISLNK(entry.external_attr >> 16)
             ):
                 raise ValueError("Unsafe checkpoint path")
@@ -82,7 +82,9 @@ def main():
     if len(data) > 50_000_000:
         raise ValueError("Unexpectedly large model bundle")
     count = install_bundle(data, manifest, root, args.replace)
-    print(f"Installed {count} verified synthetic checkpoints. No hardware accessed.")
+    print(
+        f"Installed {count} verified benchmark/model artifacts. No hardware accessed."
+    )
 
 
 if __name__ == "__main__":

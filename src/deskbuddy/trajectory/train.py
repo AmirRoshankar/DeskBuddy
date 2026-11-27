@@ -16,9 +16,10 @@ from .learning import Dense, Field, condition, encode_path, loss, sample
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", default="runs/flowreach/trajectories-v1")
-    parser.add_argument("--output", default="runs/flowreach/trajectories-v1/models-v1")
+    parser.add_argument("--dataset", default="runs/deskbuddy/trajectories-v1")
+    parser.add_argument("--output", default="runs/deskbuddy/trajectories-v1/models-v1")
     parser.add_argument("--steps", type=int, default=10000)
+    parser.add_argument("--seed", type=int, default=20261125)
     parser.add_argument("--width", type=int, default=192)
     parser.add_argument("--batch", type=int, default=512)
     parser.add_argument("--lr", type=float, default=0.0003)
@@ -39,7 +40,7 @@ def main():
         parser.error("Choose a new output folder; checkpoints are preserved")
     check_budget(folder, 30_000_000)
     torch.set_num_threads(1)
-    torch.manual_seed(20261125)
+    torch.manual_seed(args.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cuda":
         total = torch.cuda.get_device_properties(0).total_memory
@@ -194,10 +195,10 @@ def main():
                                     normalization=norm,
                                     step=step,
                                     validation_energy_score=score,
-                                    seed=20261125,
+                                    seed=args.seed,
                                     dataset=str(source),
                                     dataset_sha256=dataset_hash,
-                                    shared_batch_seed=20261125,
+                                    shared_batch_seed=args.seed,
                                     limits_rad=metadata.get("limits_rad"),
                                     tool_offset_m=metadata.get("tool_offset_m"),
                                     waypoints=32,
@@ -217,6 +218,7 @@ def main():
                 history.flush()
     summary = dict(
         device=device,
+        seed=args.seed,
         steps=args.steps,
         width=args.width,
         batch=args.batch,

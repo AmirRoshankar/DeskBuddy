@@ -90,7 +90,7 @@ def main():
             evaluate(
                 args.dataset,
                 dict(
-                    geometric="runs/flowreach/can-rim-grasps-v1/imf.pt",
+                    geometric="runs/deskbuddy/can-rim-grasps-v1/imf.pt",
                     physics=args.physics_checkpoint,
                 ),
                 args.output,

@@ -15,7 +15,7 @@ from matplotlib.patches import Circle, Rectangle
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach/trajectories-v1")
+    parser.add_argument("--folder", default="runs/deskbuddy/trajectories-v1")
     parser.add_argument("--output", default="docs/assets/trajectory-baseline.png")
     args = parser.parse_args()
     folder = Path(args.folder)

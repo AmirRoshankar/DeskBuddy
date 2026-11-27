@@ -16,13 +16,13 @@ The iMF field has width 128, context dimension 5 and state dimension 8. Training
 
 Generate 2,500 synthetic cans, four directions each: **10,000 examples**. Diameter 60–74 mm, height 115–130 mm. Rim-center targets are at radius diameter/2 with +/-0.5 mm radial variation, 2 mm below the can top. Approach opening 7–9 mm. Labels express geometry, not successful contacts.
 
-Split by can identity: 8,000 training examples, 1,000 test examples; 1,000 reserved examples unused. AdamW, learning rate 0.0003, batch 256, gradient norm cap 5, 10,000 steps. Training took 46.5 seconds on CUDA. Checkpoint and dataset: `runs/flowreach/can-rim-grasps-v1/`.
+Split by can identity: 8,000 training examples, 1,000 test examples; 1,000 reserved examples unused. AdamW, learning rate 0.0003, batch 256, gradient norm cap 5, 10,000 steps. Training took 46.5 seconds on CUDA. Checkpoint and dataset: `runs/deskbuddy/can-rim-grasps-v1/`.
 
 Reproduce into a new folder:
 
 ```powershell
-python -m deskbuddy.learned.grasp_lab --profile can_rim --objects 2500 --steps 10000 --folder runs/flowreach/can-rim-grasps-v2
-python -m deskbuddy.learned.grasp_lab --evaluate --folder runs/flowreach/can-rim-grasps-v2
+python -m deskbuddy.learned.grasp_lab --profile can_rim --objects 2500 --steps 10000 --folder runs/deskbuddy/can-rim-grasps-v2
+python -m deskbuddy.learned.grasp_lab --evaluate --folder runs/deskbuddy/can-rim-grasps-v2
 ```
 
 ## Held-out results

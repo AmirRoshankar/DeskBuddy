@@ -452,7 +452,7 @@ def train(
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach/box-grasps-v1")
+    parser.add_argument("--folder", default="runs/deskbuddy/box-grasps-v1")
     parser.add_argument("--objects", type=int, default=2000)
     parser.add_argument("--steps", type=int, default=5000)
     parser.add_argument("--batch", type=int, default=256)

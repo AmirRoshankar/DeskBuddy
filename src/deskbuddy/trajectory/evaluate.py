@@ -28,9 +28,15 @@ def classical(scene, case):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", default="runs/flowreach/trajectories-v1")
-    parser.add_argument("--models", default="runs/flowreach/trajectories-v1/models-v3")
+    parser.add_argument("--dataset", default="runs/deskbuddy/trajectories-v1")
+    parser.add_argument("--models", default="runs/deskbuddy/trajectories-v1/models-v3")
     parser.add_argument("--samples", type=int, default=500)
+    parser.add_argument(
+        "--methods",
+        nargs="+",
+        choices=("mlp", "fm", "mf", "imf"),
+        default=["mlp", "fm", "mf", "imf"],
+    )
     args = parser.parse_args()
     if args.samples < 1:
         parser.error("Need at least one held-out scenario")
@@ -41,7 +47,7 @@ def main():
     cases = [c for c in metadata["scenarios"] if c["split"] == "test"][: args.samples]
     models = {}
     checkpoints = {}
-    for name in ("mlp", "fm", "mf", "imf"):
+    for name in args.methods:
         cp = torch.load(folder / (name + ".pt"), map_location="cpu", weights_only=True)
         if cp.get("task") != "cartesian_trajectory_2d":
             raise ValueError("Wrong checkpoint task")
@@ -67,6 +73,9 @@ def main():
         ("fm", 8, 4),
         ("mf", 1, 4),
         ("imf", 1, 4),
+    ]
+    variants = [
+        variant for variant in variants if variant[0] == "rrt" or variant[0] in models
     ]
     summaries = []
     all_raw = []

@@ -2815,7 +2815,7 @@ def run(config, live=False, robot_state=False, config_path=None):
 
                             from .live_snapshot import atomic_bytes
 
-                            folder = Path("runs/flowreach/multiview")
+                            folder = Path("runs/deskbuddy/multiview")
                             folder.mkdir(parents=True, exist_ok=True)
                             for name, pixels in [
                                 ("primary", rgb),

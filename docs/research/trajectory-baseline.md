@@ -34,13 +34,13 @@ or full-arm collision check and must not be sent directly to the robot.
 Reproduce from the repository root with `.[viz,dev]` installed:
 
 ```powershell
-python -m deskbuddy.trajectory.dataset --folder runs/flowreach/trajectories-v1 --scenarios 5000 --routes 2
-python -m deskbuddy.trajectory.visualize --folder runs/flowreach/trajectories-v1
+python -m deskbuddy.trajectory.dataset --folder runs/deskbuddy/trajectories-v1 --scenarios 5000 --routes 2
+python -m deskbuddy.trajectory.visualize --folder runs/deskbuddy/trajectories-v1
 ```
 
 Use a new folder for another run; the generator refuses to overwrite an existing
 dataset. Nested experiments share the existing 10 GB budget. The generated local
-data live under `runs/flowreach/trajectories-v1/`; only the compact [metrics](results/trajectory-baseline.json)
+data live under `runs/deskbuddy/trajectories-v1/`; only the compact [metrics](results/trajectory-baseline.json)
 and figure are published in docs. MLP/FM/MeanFlow/iMF **trajectory** models have
 now been [trained and benchmarked](trajectory-learning.md) on this common dataset.
 They remain separate from the live endpoint-IK controller.

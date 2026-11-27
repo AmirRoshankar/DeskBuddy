@@ -358,5 +358,10 @@
       "layout_families": 20,
       "resamples": 10000
     }
-  }
+  },
+  "inference_rerun": false,
+  "sampling_seed": 1729,
+  "training_seeds": [
+    20261125
+  ]
 }

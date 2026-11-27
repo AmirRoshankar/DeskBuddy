@@ -16,7 +16,7 @@ from .data import check_budget, signature
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/local.json")
-    parser.add_argument("--folder", default="runs/flowreach/multimodal")
+    parser.add_argument("--folder", default="runs/deskbuddy/multimodal")
     args = parser.parse_args()
     config = load_config(args.config)
     arm = Arm(config["model_joint_limits_deg"], config["tool_offset_m"])

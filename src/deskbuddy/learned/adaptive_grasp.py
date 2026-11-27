@@ -248,7 +248,7 @@ def train(folder, objects=1000, steps=5000, batch=256):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach/adaptive-box-grasps-v1")
+    parser.add_argument("--folder", default="runs/deskbuddy/adaptive-box-grasps-v1")
     parser.add_argument("--objects", type=int, default=1000)
     parser.add_argument("--steps", type=int, default=5000)
     parser.add_argument("--batch", type=int, default=256)

@@ -31,7 +31,7 @@ _SHARED = {}
 _SHARED_LOCK = __import__("threading").Lock()
 
 
-def shared_suite(folder="runs/flowreach/trajectories-v1/models-v3"):
+def shared_suite(folder="runs/deskbuddy/trajectories-v1/models-v3"):
     """One process-wide model set shared by overlays, routes and comparisons."""
     with _SHARED_LOCK:
         if folder not in _SHARED:
@@ -43,7 +43,7 @@ class PlannerSuite:
     """Loads only the live comparison models (MLP, iMF); FM loads on request."""
 
     def __init__(
-        self, folder="runs/flowreach/trajectories-v1/models-v3", methods=("mlp", "imf")
+        self, folder="runs/deskbuddy/trajectories-v1/models-v3", methods=("mlp", "imf")
     ):
         torch.set_num_threads(1)
         self.folder = folder
@@ -208,7 +208,7 @@ class PlannerSuite:
 
 
 def save_preview(payload):
-    root = Path("runs/flowreach/live-previews")
+    root = Path("runs/deskbuddy/live-previews")
     root.mkdir(parents=True, exist_ok=True)
     content = json.dumps(payload, indent=2) + "\n"
     check_budget(root, len(content.encode()))

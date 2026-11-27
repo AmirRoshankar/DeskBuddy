@@ -174,7 +174,7 @@ def generate(folder, scenarios=5000, routes=2, seed=20261125):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--folder", default="runs/flowreach/trajectories-v1")
+    parser.add_argument("--folder", default="runs/deskbuddy/trajectories-v1")
     parser.add_argument("--scenarios", type=int, default=5000)
     parser.add_argument("--routes", type=int, default=2)
     args = parser.parse_args()

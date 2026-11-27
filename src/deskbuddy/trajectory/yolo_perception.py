@@ -124,7 +124,7 @@ class YoloDetector:
 
     def load(self):
         if self.model is None:
-            root = Path("runs/flowreach/perception").resolve()
+            root = Path("runs/deskbuddy/perception").resolve()
             os.environ.setdefault("YOLO_CONFIG_DIR", str(root / "settings"))
             os.environ["YOLO_AUTOINSTALL"] = "false"
             from ultralytics import YOLOE, settings
@@ -262,7 +262,7 @@ class YoloDetector:
         key_result = result
         key_masks = masks
         key_source = "prompt-free semantic"
-        reference = Path("runs/flowreach/perception/keys-visual-prompts-s.pt")
+        reference = Path("runs/deskbuddy/perception/keys-visual-prompts-s.pt")
         if (
             config.get("task_mode") != "can_discard"
             and reference.exists()

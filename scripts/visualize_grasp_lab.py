@@ -13,10 +13,10 @@ import torch
 from deskbuddy.learned.grasp_lab import unit
 from deskbuddy.trajectory.learning import Dense, Field, sample
 
-root = Path("runs/flowreach/box-grasps-v1")
+root = Path("runs/deskbuddy/box-grasps-v1")
 report = json.loads((root / "evaluation.json").read_text())["summary"]
 adaptive = json.loads(
-    Path("runs/flowreach/adaptive-box-grasps-v1/report.json").read_text()
+    Path("runs/deskbuddy/adaptive-box-grasps-v1/report.json").read_text()
 )["metrics"]
 plt.style.use("default")
 fig, axes = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)

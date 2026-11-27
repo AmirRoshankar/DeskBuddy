@@ -11,6 +11,21 @@ import pytest
 from deskbuddy.ui.camera_alignment import CameraAlignment
 
 
+@pytest.fixture(scope="module")
+def tk_host():
+    # Windows Tcl can fail when repeatedly creating/destroying interpreters.
+    # Separate toplevels isolate each test while sharing one native interpreter.
+    host = tk.Tk()
+    host.withdraw()
+    yield host
+    host.destroy()
+
+
+@pytest.fixture(autouse=True)
+def isolated_tk_window(monkeypatch, tk_host):
+    monkeypatch.setattr(tk, "Tk", lambda: tk.Toplevel(tk_host))
+
+
 def test_drag_updates_source_pixels_and_save_accepts_warning():
     root = tk.Tk()
     root.withdraw()

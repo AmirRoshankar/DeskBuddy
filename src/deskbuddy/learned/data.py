@@ -47,7 +47,7 @@ def signature(config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/local.json")
-    parser.add_argument("--folder", default="runs/flowreach")
+    parser.add_argument("--folder", default="runs/deskbuddy")
     parser.add_argument("--train", type=int, default=4000)
     parser.add_argument("--validation", type=int, default=500)
     parser.add_argument("--test", type=int, default=500)

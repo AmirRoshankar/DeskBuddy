@@ -18,12 +18,12 @@ YOLOE-26 Medium prompt-free segmentation replaces Nano. Official weights:
 38 MB / 18.4 million parameters. A larger detector is not proof of accurate keys
 recognition; class/confidence and calibrated paper exclusion still matter.
 The prompt-free model mislabeled the actual key cluster as tools. A separate
-Small visual-prompt detector now uses one boxed reference of the user's actual
+Small visual-prompt detector now uses one boxed reference of the physical
 keys, a supported [YOLOE visual-prompt mode](https://docs.ultralytics.com/models/yoloe/).
 This is one-shot instance matching, not a newly trained general key detector.
 Two consecutive matching detections are required before automatic targeting.
 The thickest interior mask pixel supplies the pickup point. The reference and
-weights stay private under `runs/flowreach/perception/`; nothing is bundled or
+weights stay private under `runs/deskbuddy/perception/`; nothing is bundled or
 published. On fresh camera frames the key cluster was confirmed three times,
 most recently around 60% confidence. Physical pickup has not been tested.
 
@@ -109,7 +109,7 @@ A 16-frame stationary capture with Small + Kalman tracking reduced world-center
 standard deviation from [0.13, 0.54, 1.32] mm to [0.07, 0.20, 0.72] mm in X/Y/Z.
 This short scene-specific measurement is not an accuracy benchmark or a guarantee
 for all layouts. Private raw/filtered traces are in
-`runs/flowreach/perception/small-tracker-validation.json`.
+`runs/deskbuddy/perception/small-tracker-validation.json`.
 
 
 To create a new local key reference after swapping keys or changing the view,

@@ -175,7 +175,7 @@ physical demonstrations. Run them with the project virtual environment:
 ```powershell
 python -m deskbuddy.learned.grasp_lab --help
 python -m deskbuddy.learned.adaptive_grasp --help
-python -m deskbuddy.learned.grasp_lab --folder runs/flowreach/box-grasps-v1 --evaluate
+python -m deskbuddy.learned.grasp_lab --folder runs/deskbuddy/box-grasps-v1 --evaluate
 python scripts/visualize_grasp_lab.py
 ```
 
