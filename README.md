@@ -84,20 +84,6 @@ Optional extras: `[flow,viz]` for learning/plots, `[simulation]` for MuJoCo, and
 - **Grasp simulation still has a transfer gap.** The physics-trained checkpoint completed 6/246 simulated pick-and-drops versus 3/246 for the geometric checkpoint. Better contact models and outcome feedback are needed.
 - **Pickup verification has no force sensor.** Visual evidence can be ambiguous under occlusion, can rotation or reflections.
 
-## Development history
-
-I developed DeskBuddy locally in November 2026 and published the initial release on **November 26, 2026**. The early work arrived in one release commit; subsequent improvements have their actual commit dates.
-
-| Date | Milestone | Evidence |
-| --- | --- | --- |
-| Nov 24 | Click-to-Reach: camera/arm calibration and first physical IK reach | [Calibration report](docs/research/results/calibration_results.json), [first reach](docs/research/results/first_reach_results.json) |
-| Nov 25 | FlowReach: flow-matching experiments and the planner comparison | [Trajectory plot](docs/assets/trajectory-learning.png), [metrics](docs/research/results/trajectory-learning.json) |
-| Nov 26 | FlowDesk: multi-camera workspace, grasping and physics experiments | [Controller view](docs/assets/success-poster.jpg), [MuJoCo experiment](docs/guides/can-physics-and-retries.md) |
-| Nov 26 | DeskBuddy: first public release and recorded can pickup/discard | [Release](https://github.com/AmirRoshankar/DeskBuddy/releases/tag/v0.1.0), [physical demo](docs/assets/success.mp4) |
-| Nov 27 | Reproduction command, three-seed study and research documentation | [Seed results](docs/research/training-seeds.md), [reproduction guide](docs/research/reproducibility.md) |
-
-Click-to-Reach, FlowReach and FlowDesk were names used during development, not separate projects. New artifacts use `runs/deskbuddy/`; older experiment records retain their original names. I used AI coding tools for implementation, debugging and tests.
-
 ## References and learning resources
 
 [MeanFlow](https://arxiv.org/abs/2505.13447) · [Improved MeanFlow](https://arxiv.org/abs/2512.02012) · [Adaptive Mean Flow](https://arxiv.org/abs/2610.06089) · [Lie-group MeanFlow grasping](https://arxiv.org/abs/2608.26076) · [SORT](https://arxiv.org/abs/1602.00763) · [YOLOE](https://arxiv.org/abs/2503.07465) · [OMPL](https://ompl.kavrakilab.org/) · [LeRobot](https://github.com/huggingface/lerobot) · [MuJoCo](https://github.com/google-deepmind/mujoco) · [MIT 6.8210](https://underactuated.csail.mit.edu/)
